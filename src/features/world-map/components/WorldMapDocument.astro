@@ -1,11 +1,15 @@
 ---
-import { feature } from 'topojson-client';
-import type { GeometryCollection, Topology } from 'topojson-specification';
-import countries110m from 'world-atlas/countries-110m.json';
+import { feature } from "topojson-client";
+import type { GeometryCollection, Topology } from "topojson-specification";
+import countries110m from "world-atlas/countries-110m.json";
+import events from "../data/events.json";
 
 type Position = [number, number];
-type PolygonGeometry = { type: 'Polygon'; coordinates: Position[][] };
-type MultiPolygonGeometry = { type: 'MultiPolygon'; coordinates: Position[][][] };
+type PolygonGeometry = { type: "Polygon"; coordinates: Position[][] };
+type MultiPolygonGeometry = {
+  type: "MultiPolygon";
+  coordinates: Position[][][];
+};
 type CountryGeometry = PolygonGeometry | MultiPolygonGeometry;
 
 // Equirectangular projection: SVG y grows downward, so flip latitude.
@@ -15,70 +19,241 @@ const project = ([lng, lat]: Position): Position => [lng, -lat];
 // antimeridian (e.g. Russia, Fiji) draw off the edge of the map instead of a
 // spurious line straight across it.
 const ringToPath = (ring: Position[]): string => {
-	let previousLng = ring[0][0];
+  let previousLng = ring[0][0];
 
-	const points = ring.map(([lng, lat], i) => {
-		let unwrappedLng = lng;
-		if (i > 0) {
-			while (unwrappedLng - previousLng > 180) unwrappedLng -= 360;
-			while (unwrappedLng - previousLng < -180) unwrappedLng += 360;
-		}
-		previousLng = unwrappedLng;
-		return project([unwrappedLng, lat]);
-	});
+  const points = ring.map(([lng, lat], i) => {
+    let unwrappedLng = lng;
+    if (i > 0) {
+      while (unwrappedLng - previousLng > 180) unwrappedLng -= 360;
+      while (unwrappedLng - previousLng < -180) unwrappedLng += 360;
+    }
+    previousLng = unwrappedLng;
+    return project([unwrappedLng, lat]);
+  });
 
-	return `${points.map((point, i) => `${i === 0 ? 'M' : 'L'}${point.join(',')}`).join(' ')} Z`;
+  return `${points.map((point, i) => `${i === 0 ? "M" : "L"}${point.join(",")}`).join(" ")} Z`;
 };
 
 const geometryToPath = (geometry: CountryGeometry): string =>
-	geometry.type === 'Polygon'
-		? geometry.coordinates.map(ringToPath).join(' ')
-		: geometry.coordinates.map((polygon) => polygon.map(ringToPath).join(' ')).join(' ');
-
-// ISO 3166-1 numeric codes
-const COUNTRY_FOCUS_COLORS: Record<string, string> = {
-	'724': '#2f6d3a', // Spain -> green
-	'250': '#2b5c8a', // France -> blue
-};
+  geometry.type === "Polygon"
+    ? geometry.coordinates.map(ringToPath).join(" ")
+    : geometry.coordinates
+        .map((polygon) => polygon.map(ringToPath).join(" "))
+        .join(" ");
 
 const topology = countries110m as unknown as Topology;
-const geoJson = feature(topology, topology.objects.countries as GeometryCollection);
+const geoJson = feature(
+  topology,
+  topology.objects.countries as GeometryCollection,
+);
 
 const countries = geoJson.features.map((f) => ({
-	name: (f.properties as { name: string }).name,
-	path: geometryToPath(f.geometry as unknown as CountryGeometry),
-	focusColor: COUNTRY_FOCUS_COLORS[String(f.id)],
+  name: (f.properties as { name: string }).name,
+  path: geometryToPath(f.geometry as unknown as CountryGeometry),
 }));
 
-const WORLD_VIEW_BOX = '-180 -90 360 180';
-const EUROPE_VIEW_BOX = '-15 -62.5 50 25';
-const IDLE_DELAY_S = 3;
-const FOCUS_DURATION_S = 2.5;
-const COLOR_REVEAL_BEGIN_S = IDLE_DELAY_S + FOCUS_DURATION_S;
+// Characters whose events get a spyglass target marker on the map.
+const TARGET_CHARACTERS = [
+  "Barbablanca",
+  "Capitana Morgana",
+  "El Cuervo Negro",
+];
+
+const WORLD_VIEW_BOX = "-180 -90 360 180";
+const FOCUS_WIDTH = 24;
+const FOCUS_HEIGHT = 12;
+const START_DELAY_S = 1;
+const FOCUS_DURATION_S = 4;
+
+const timeline = events.map((event) => {
+  const [x, y] = project([event.lng, event.lat]);
+  const focusViewBox = `${x - FOCUS_WIDTH / 2} ${y - FOCUS_HEIGHT / 2} ${FOCUS_WIDTH} ${FOCUS_HEIGHT}`;
+  const hasTarget = event.characters.some((name) =>
+    TARGET_CHARACTERS.includes(name),
+  );
+  return { year: event.year, text: event.text, x, y, focusViewBox, hasTarget };
+});
 ---
 
-<div class="h-full w-full overflow-hidden bg-[#e8d9b5]">
-	<svg viewBox={WORLD_VIEW_BOX} preserveAspectRatio="xMidYMid slice" class="h-full w-full">
-		<animate
-			attributeName="viewBox"
-			from={WORLD_VIEW_BOX}
-			to={EUROPE_VIEW_BOX}
-			begin={`${IDLE_DELAY_S}s`}
-			dur={`${FOCUS_DURATION_S}s`}
-			keyTimes="0;1"
-			calcMode="spline"
-			keySplines="0.42 0 0.58 1"
-			fill="freeze"
-		/>
-		{
-			countries.map((country) => (
-				<path d={country.path} fill-rule="evenodd" class="fill-[#c9b48f] stroke-[#5b4636] [stroke-width:0.3]">
-					<title>{country.name}</title>
-					{country.focusColor && (
-						<set attributeName="fill" to={country.focusColor} begin={`${COLOR_REVEAL_BEGIN_S}s`} fill="freeze" />
-					)}
-				</path>
-			))
-		}
-	</svg>
+<div class="relative h-full w-full overflow-hidden bg-[#e8d9b5]">
+  <svg
+    id="world-map-svg"
+    viewBox={WORLD_VIEW_BOX}
+    preserveAspectRatio="xMidYMid slice"
+    class="h-full w-full"
+  >
+    {
+      countries.map((country) => (
+        <path
+          d={country.path}
+          fill-rule="evenodd"
+          class="fill-[#c9b48f] stroke-[#5b4636] [stroke-width:0.3]"
+        >
+          <title>{country.name}</title>
+        </path>
+      ))
+    }
+    <g id="target-marker" class="hidden">
+      <circle
+        r="2.1"
+        class="fill-none stroke-[#8a2020] [animation:spin_4s_linear_infinite]"
+        stroke-width="0.12"
+        stroke-dasharray="0.35 0.55"
+        style="transform-origin: 0px 0px;"></circle>
+      <circle r="1.5" class="fill-none stroke-[#c9a13b]" stroke-width="0.16"
+      ></circle>
+      <circle
+        r="0.85"
+        class="fill-none stroke-[#c9a13b]"
+        stroke-width="0.13"
+        opacity="0.85"></circle>
+      <circle
+        r="0.16"
+        class="fill-[#8a2020] stroke-[#2a1608]"
+        stroke-width="0.05"></circle>
+      <line
+        x1="-2.9"
+        y1="0"
+        x2="-2.4"
+        y2="0"
+        class="stroke-[#c9a13b]"
+        stroke-width="0.16"></line>
+      <line
+        x1="2.9"
+        y1="0"
+        x2="2.4"
+        y2="0"
+        class="stroke-[#c9a13b]"
+        stroke-width="0.16"></line>
+      <line
+        x1="0"
+        y1="-2.9"
+        x2="0"
+        y2="-2.4"
+        class="stroke-[#c9a13b]"
+        stroke-width="0.16"></line>
+      <line
+        x1="0"
+        y1="2.9"
+        x2="0"
+        y2="2.4"
+        class="stroke-[#c9a13b]"
+        stroke-width="0.16"></line>
+    </g>
+  </svg>
+
+  <div
+    id="event-card"
+    class="pointer-events-none absolute inset-x-0 top-4 mx-auto w-fit max-w-[85%] rounded-lg border-2 border-[#9c7a24] bg-[#2a1608]/90 px-6 py-3 text-center opacity-0 transition-opacity duration-500 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
+  >
+    <p id="event-year" class="font-serif text-2xl font-bold text-[#c9a13b]"></p>
+    <p id="event-text" class="font-serif text-base text-[#e8d9b5]"></p>
+  </div>
 </div>
+
+<script
+  define:vars={{
+    timeline,
+    worldViewBox: WORLD_VIEW_BOX,
+    startDelay: START_DELAY_S,
+    focusDuration: FOCUS_DURATION_S,
+  }}
+>
+  const svg = document.getElementById("world-map-svg");
+  const yearEl = document.getElementById("event-year");
+  const textEl = document.getElementById("event-text");
+  const card = document.getElementById("event-card");
+  const targetMarker = document.getElementById("target-marker");
+
+  const parseBox = (str) => str.split(" ").map(Number);
+  const boxToStr = (box) => box.join(" ");
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const easeInOutCubic = (t) =>
+    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+  let currentBox = parseBox(worldViewBox);
+  let rafId = null;
+  let advanceTimeout = null;
+  let autoplay = true;
+
+  function animateTo(targetBox, durationMs, onDone) {
+    if (rafId) cancelAnimationFrame(rafId);
+    const startBox = currentBox;
+    const startTime = performance.now();
+
+    function step(now) {
+      const t = Math.min((now - startTime) / durationMs, 1);
+      const eased = easeInOutCubic(t);
+      const box = startBox.map((v, i) => lerp(v, targetBox[i], eased));
+      svg.setAttribute("viewBox", boxToStr(box));
+      if (t < 1) {
+        rafId = requestAnimationFrame(step);
+      } else {
+        currentBox = targetBox;
+        rafId = null;
+        onDone?.();
+      }
+    }
+    rafId = requestAnimationFrame(step);
+  }
+
+  function updateActiveButton(index) {
+    document.querySelectorAll("[data-event-index]").forEach((btn) => {
+      const isActive = Number(btn.dataset.eventIndex) === index;
+      btn.classList.toggle("bg-[#c9a13b]", isActive);
+      btn.classList.toggle("text-[#2a1608]", isActive);
+      btn.classList.toggle("bg-[#3a2414]", !isActive);
+      btn.classList.toggle("text-[#c9a13b]", !isActive);
+    });
+  }
+
+  function showEvent(index, { chain = false } = {}) {
+    const entry = timeline[index];
+    if (!entry) return;
+
+    yearEl.textContent = String(entry.year);
+    textEl.textContent = entry.text;
+    card.classList.remove("opacity-0");
+
+    if (entry.hasTarget) {
+      targetMarker.setAttribute(
+        "transform",
+        `translate(${entry.x}, ${entry.y})`,
+      );
+      targetMarker.classList.remove("hidden");
+    } else {
+      targetMarker.classList.add("hidden");
+    }
+
+    updateActiveButton(index);
+
+    const focusBox = parseBox(entry.focusViewBox);
+    animateTo(focusBox, focusDuration * 1000, () => {
+      if (!chain || !autoplay) return;
+      if (index < timeline.length - 1) {
+        showEvent(index + 1, { chain: true });
+      } else {
+        finishTour();
+      }
+    });
+  }
+
+  function finishTour() {
+    animateTo(parseBox(worldViewBox), focusDuration * 1000, () => {
+      card.classList.add("opacity-0");
+      targetMarker.classList.add("hidden");
+      updateActiveButton(-1);
+    });
+  }
+
+  window.addEventListener("map:select-event", (event) => {
+    autoplay = false;
+    if (advanceTimeout) clearTimeout(advanceTimeout);
+    showEvent(event.detail.index);
+  });
+
+  advanceTimeout = setTimeout(
+    () => showEvent(0, { chain: true }),
+    startDelay * 1000,
+  );
+</script>

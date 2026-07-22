@@ -1,0 +1,32 @@
+---
+import events from '../data/events.json';
+---
+
+<div class="pointer-events-none fixed inset-x-0 bottom-6 z-20 flex justify-center px-4">
+	<div
+		class="pointer-events-auto flex max-w-full gap-2 overflow-x-auto rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-3 py-2 [scrollbar-width:thin]"
+	>
+		{
+			events.map((event, index) => (
+				<button
+					type="button"
+					data-event-index={index}
+					data-select-event
+					title={`${event.year} — ${event.text}`}
+					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#9c7a24] bg-[#3a2414] font-serif text-sm font-bold text-[#c9a13b] transition-colors hover:bg-[#4a2c14]"
+				>
+					{index + 1}
+				</button>
+			))
+		}
+	</div>
+</div>
+
+<script>
+	document.querySelectorAll('[data-select-event]').forEach((btn) => {
+		btn.addEventListener('click', () => {
+			const index = Number(btn.getAttribute('data-event-index'));
+			window.dispatchEvent(new CustomEvent('map:select-event', { detail: { index } }));
+		});
+	});
+</script>

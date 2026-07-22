@@ -1,0 +1,114 @@
+[
+	{
+		"year": 1502,
+		"text": "Barbablanca arrived to Turtle Island",
+		"lat": 24.0,
+		"lng": -76.0,
+		"characters": ["Barbablanca"]
+	},
+	{
+		"year": 1508,
+		"text": "Capitana Morgana raided the port of Nassau",
+		"lat": 25.05,
+		"lng": -77.35,
+		"characters": ["Capitana Morgana"]
+	},
+	{
+		"year": 1513,
+		"text": "El Cuervo Negro was shipwrecked near Skull Rock",
+		"lat": 22.5,
+		"lng": -74.5,
+		"characters": ["El Cuervo Negro"]
+	},
+	{
+		"year": 1519,
+		"text": "Barbanegra founded a hideout on Tortuga",
+		"lat": 20.07,
+		"lng": -72.79,
+		"characters": []
+	},
+	{
+		"year": 1524,
+		"text": "The treasure of Isla del Fuego was buried by Captain Reyes",
+		"lat": 21.5,
+		"lng": -79.0,
+		"characters": []
+	},
+	{
+		"year": 1531,
+		"text": "A mutiny broke out aboard the Serpiente Dorada near Coral Bay",
+		"lat": 18.34,
+		"lng": -64.72,
+		"characters": []
+	},
+	{
+		"year": 1537,
+		"text": "Barbablanca defeated the Royal Fleet at Devil's Strait",
+		"lat": 24.5,
+		"lng": -81.0,
+		"characters": ["Barbablanca"]
+	},
+	{
+		"year": 1542,
+		"text": "El Pata de Palo established a trading post in Puerto Cangrejo",
+		"lat": 18.2,
+		"lng": -66.5,
+		"characters": []
+	},
+	{
+		"year": 1549,
+		"text": "The ghost ship Ánimas was last seen near Fog Island",
+		"lat": 32.3,
+		"lng": -64.7,
+		"characters": []
+	},
+	{
+		"year": 1556,
+		"text": "Capitana Morgana signed a truce at Turtle Island",
+		"lat": 24.0,
+		"lng": -76.0,
+		"characters": ["Capitana Morgana"]
+	},
+	{
+		"year": 1563,
+		"text": "Barbanegra's crew discovered the Cave of Whispers on Isla Sombra",
+		"lat": 17.9,
+		"lng": -76.8,
+		"characters": []
+	},
+	{
+		"year": 1571,
+		"text": "A great storm sank three galleons off Shark Reef",
+		"lat": 23.0,
+		"lng": -75.5,
+		"characters": []
+	},
+	{
+		"year": 1578,
+		"text": "El Cuervo Negro captured the merchant ship Esperanza near Bahía Perdida",
+		"lat": 20.0,
+		"lng": -77.5,
+		"characters": ["El Cuervo Negro"]
+	},
+	{
+		"year": 1585,
+		"text": "Barbablanca retired to a cottage on Turtle Island",
+		"lat": 24.0,
+		"lng": -76.0,
+		"characters": ["Barbablanca"]
+	},
+	{
+		"year": 1593,
+		"text": "The legendary map of Isla del Fuego was stolen from Puerto Cangrejo",
+		"lat": 18.2,
+		"lng": -66.5,
+		"characters": []
+	},
+	{
+		"year": 1601,
+		"text": "Capitana Morgana's fleet was ambushed at Devil's Strait",
+		"lat": 24.5,
+		"lng": -81.0,
+		"characters": ["Capitana Morgana"]
+	}
+]
