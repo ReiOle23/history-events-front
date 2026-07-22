@@ -1,0 +1,15 @@
+---
+import PirateOrnaments from '../components/PirateOrnaments.astro';
+import WorldMapDocument from '../components/WorldMapDocument.astro';
+---
+
+<div
+	class="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[image:repeating-linear-gradient(90deg,rgba(0,0,0,0.07)_0_3px,transparent_3px_90px),radial-gradient(ellipse_at_center,#7a4a26_0%,#4a2c14_65%,#2a1608_100%)]"
+>
+	<div
+		class="relative h-[80%] w-[86%] -rotate-[0.6deg] overflow-hidden rounded [box-shadow:0_30px_60px_rgba(0,0,0,0.55),0_0_0_10px_rgba(20,12,6,0.4)]"
+	>
+		<WorldMapDocument />
+	</div>
+	<PirateOrnaments />
+</div>

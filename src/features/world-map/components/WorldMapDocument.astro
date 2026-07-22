@@ -1,0 +1,84 @@
+---
+import { feature } from 'topojson-client';
+import type { GeometryCollection, Topology } from 'topojson-specification';
+import countries110m from 'world-atlas/countries-110m.json';
+
+type Position = [number, number];
+type PolygonGeometry = { type: 'Polygon'; coordinates: Position[][] };
+type MultiPolygonGeometry = { type: 'MultiPolygon'; coordinates: Position[][][] };
+type CountryGeometry = PolygonGeometry | MultiPolygonGeometry;
+
+// Equirectangular projection: SVG y grows downward, so flip latitude.
+const project = ([lng, lat]: Position): Position => [lng, -lat];
+
+// Unwrap longitude relative to the previous point so rings that cross the
+// antimeridian (e.g. Russia, Fiji) draw off the edge of the map instead of a
+// spurious line straight across it.
+const ringToPath = (ring: Position[]): string => {
+	let previousLng = ring[0][0];
+
+	const points = ring.map(([lng, lat], i) => {
+		let unwrappedLng = lng;
+		if (i > 0) {
+			while (unwrappedLng - previousLng > 180) unwrappedLng -= 360;
+			while (unwrappedLng - previousLng < -180) unwrappedLng += 360;
+		}
+		previousLng = unwrappedLng;
+		return project([unwrappedLng, lat]);
+	});
+
+	return `${points.map((point, i) => `${i === 0 ? 'M' : 'L'}${point.join(',')}`).join(' ')} Z`;
+};
+
+const geometryToPath = (geometry: CountryGeometry): string =>
+	geometry.type === 'Polygon'
+		? geometry.coordinates.map(ringToPath).join(' ')
+		: geometry.coordinates.map((polygon) => polygon.map(ringToPath).join(' ')).join(' ');
+
+// ISO 3166-1 numeric codes
+const COUNTRY_FOCUS_COLORS: Record<string, string> = {
+	'724': '#2f6d3a', // Spain -> green
+	'250': '#2b5c8a', // France -> blue
+};
+
+const topology = countries110m as unknown as Topology;
+const geoJson = feature(topology, topology.objects.countries as GeometryCollection);
+
+const countries = geoJson.features.map((f) => ({
+	name: (f.properties as { name: string }).name,
+	path: geometryToPath(f.geometry as unknown as CountryGeometry),
+	focusColor: COUNTRY_FOCUS_COLORS[String(f.id)],
+}));
+
+const WORLD_VIEW_BOX = '-180 -90 360 180';
+const EUROPE_VIEW_BOX = '-15 -62.5 50 25';
+const IDLE_DELAY_S = 3;
+const FOCUS_DURATION_S = 2.5;
+const COLOR_REVEAL_BEGIN_S = IDLE_DELAY_S + FOCUS_DURATION_S;
+---
+
+<div class="h-full w-full overflow-hidden bg-[#e8d9b5]">
+	<svg viewBox={WORLD_VIEW_BOX} preserveAspectRatio="xMidYMid slice" class="h-full w-full">
+		<animate
+			attributeName="viewBox"
+			from={WORLD_VIEW_BOX}
+			to={EUROPE_VIEW_BOX}
+			begin={`${IDLE_DELAY_S}s`}
+			dur={`${FOCUS_DURATION_S}s`}
+			keyTimes="0;1"
+			calcMode="spline"
+			keySplines="0.42 0 0.58 1"
+			fill="freeze"
+		/>
+		{
+			countries.map((country) => (
+				<path d={country.path} fill-rule="evenodd" class="fill-[#c9b48f] stroke-[#5b4636] [stroke-width:0.3]">
+					<title>{country.name}</title>
+					{country.focusColor && (
+						<set attributeName="fill" to={country.focusColor} begin={`${COLOR_REVEAL_BEGIN_S}s`} fill="freeze" />
+					)}
+				</path>
+			))
+		}
+	</svg>
+</div>

@@ -1,0 +1,78 @@
+---
+const ROPE_TURNS = 3;
+const ROPE_POINTS = 60;
+const ropePath = Array.from({ length: ROPE_POINTS }, (_, i) => {
+	const t = i / (ROPE_POINTS - 1);
+	const angle = t * Math.PI * 2 * ROPE_TURNS;
+	const radius = 3 + t * 20;
+	const x = 24 + radius * Math.cos(angle);
+	const y = 24 + radius * Math.sin(angle);
+	return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
+}).join(' ');
+
+const COMPASS_TICK_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+
+const INK = '#2a1608';
+const GOLD = '#c9a13b';
+const GOLD_DARK = '#9c7a24';
+---
+
+<div class="pointer-events-none fixed inset-0 z-10 [filter:sepia(0.25)]">
+	<!-- Top-left: coiled rope -->
+	<div class="absolute left-6 top-6 [filter:drop-shadow(2px_4px_3px_rgba(0,0,0,0.5))]">
+		<svg viewBox="0 0 48 48" class="h-20 w-20 opacity-95">
+			<path d={ropePath} class="fill-none" stroke={GOLD_DARK} stroke-width="4.5" stroke-linecap="round" />
+			<path d={ropePath} class="fill-none" stroke={INK} stroke-width="1.5" stroke-linecap="round" opacity="0.5" />
+		</svg>
+	</div>
+
+	<!-- Bottom-left: brass compass with scattered coins -->
+	<div class="absolute bottom-6 left-6 flex items-end gap-2 [filter:drop-shadow(2px_5px_4px_rgba(0,0,0,0.55))]">
+		<svg viewBox="0 0 60 40" class="h-10 w-14 opacity-95">
+			<circle cx="14" cy="26" r="11" fill={GOLD} stroke={INK} stroke-width="1.5" />
+			<circle cx="14" cy="26" r="7" class="fill-none" stroke={GOLD_DARK} stroke-width="1.5" />
+			<circle cx="30" cy="14" r="11" fill={GOLD_DARK} stroke={INK} stroke-width="1.5" />
+			<circle cx="30" cy="14" r="7" class="fill-none" stroke={INK} stroke-width="1" opacity="0.6" />
+			<circle cx="44" cy="24" r="11" fill={GOLD} stroke={INK} stroke-width="1.5" />
+			<circle cx="44" cy="24" r="7" class="fill-none" stroke={GOLD_DARK} stroke-width="1.5" />
+		</svg>
+		<svg viewBox="0 0 100 100" class="h-24 w-24 opacity-95">
+			<circle cx="50" cy="50" r="44" fill={GOLD_DARK} stroke={INK} stroke-width="3" />
+			<circle cx="50" cy="50" r="38" class="fill-[#e8d9b5]" stroke={INK} stroke-width="2.5" />
+			<circle cx="50" cy="50" r="30" class="fill-none" stroke={INK} stroke-width="1" opacity="0.6" />
+			{
+				COMPASS_TICK_ANGLES.map((angle) => (
+					<line
+						transform={`rotate(${angle} 50 50)`}
+						x1="50"
+						y1="12"
+						x2="50"
+						y2="19"
+						stroke={INK}
+						stroke-width="2"
+					/>
+				))
+			}
+			<path d="M50,20 L58,50 L50,80 L42,50 Z" fill="#8a2020" stroke={INK} stroke-width="1" />
+			<path d="M50,20 L54,50 L50,80 L46,50 Z" class="fill-[#e8d9b5]" opacity="0.85" />
+			<circle cx="50" cy="50" r="4.5" fill={INK} />
+		</svg>
+	</div>
+
+	<!-- Bottom-right: dagger with a few coins -->
+	<div class="absolute bottom-6 right-6 flex items-end gap-3 [filter:drop-shadow(3px_5px_4px_rgba(0,0,0,0.55))]">
+		<svg viewBox="0 0 60 30" class="h-8 w-14 opacity-95">
+			<circle cx="14" cy="18" r="10" fill={GOLD} stroke={INK} stroke-width="1.5" />
+			<circle cx="14" cy="18" r="6.5" class="fill-none" stroke={GOLD_DARK} stroke-width="1.5" />
+			<circle cx="34" cy="10" r="10" fill={GOLD_DARK} stroke={INK} stroke-width="1.5" />
+			<circle cx="34" cy="10" r="6.5" class="fill-none" stroke={INK} stroke-width="1" opacity="0.6" />
+		</svg>
+		<svg viewBox="0 0 40 140" class="h-28 w-8 rotate-[14deg] opacity-95">
+			<path d="M20,0 L27,72 L20,84 L13,72 Z" class="fill-[#cfd4d9]" stroke={INK} stroke-width="1.5" />
+			<path d="M20,0 L23,72 L20,84 L17,72 Z" class="fill-[#eef1f3]" opacity="0.8" />
+			<rect x="6" y="80" width="28" height="7" rx="2.5" fill={GOLD_DARK} stroke={INK} stroke-width="1" />
+			<rect x="15" y="87" width="10" height="36" rx="4" class="fill-[#5b3a1e]" stroke={INK} stroke-width="1" />
+			<circle cx="20" cy="128" r="7" fill={GOLD_DARK} stroke={INK} stroke-width="1" />
+		</svg>
+	</div>
+</div>
