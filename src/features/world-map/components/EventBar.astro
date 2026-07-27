@@ -1,5 +1,20 @@
 ---
-import events from '../data/events.json';
+import defaultEvents from '../data/events.json';
+
+interface HistoryEvent {
+	year: number;
+	text: string;
+	lat: number;
+	lng: number;
+	characters: string[];
+	age: string;
+}
+
+interface Props {
+	events?: HistoryEvent[];
+}
+
+const { events = defaultEvents } = Astro.props;
 ---
 
 <div class="pointer-events-none fixed inset-x-0 bottom-6 z-20 flex justify-center px-4">

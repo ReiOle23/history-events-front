@@ -1,17 +1,40 @@
 ---
-import EventBar from '../components/EventBar.astro';
-import PirateOrnaments from '../components/PirateOrnaments.astro';
-import WorldMapDocument from '../components/WorldMapDocument.astro';
+import EventBar from "../components/EventBar.astro";
+import PirateOrnaments from "../components/PirateOrnaments.astro";
+import WorldMapDocument from "../components/WorldMapDocument.astro";
+
+interface HistoryEvent {
+  year: number;
+  text: string;
+  lat: number;
+  lng: number;
+  characters: string[];
+  age: string;
+}
+
+interface Props {
+  events?: HistoryEvent[];
+}
+
+const { events } = Astro.props;
 ---
 
 <div
-	class="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[image:repeating-linear-gradient(90deg,rgba(0,0,0,0.07)_0_3px,transparent_3px_90px),radial-gradient(ellipse_at_center,#7a4a26_0%,#4a2c14_65%,#2a1608_100%)]"
+  class="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-[image:repeating-linear-gradient(90deg,rgba(0,0,0,0.07)_0_3px,transparent_3px_90px),radial-gradient(ellipse_at_center,#7a4a26_0%,#4a2c14_65%,#2a1608_100%)]"
 >
-	<div
-		class="relative h-[80%] w-[86%] -rotate-[0.6deg] overflow-hidden rounded [box-shadow:0_30px_60px_rgba(0,0,0,0.55),0_0_0_10px_rgba(20,12,6,0.4)]"
-	>
-		<WorldMapDocument />
-	</div>
-	<PirateOrnaments />
-	<EventBar />
+  <PirateOrnaments />
+
+  <a
+    href="/"
+    class="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-4 py-2 font-serif text-sm font-bold text-[#c9a13b] transition-colors hover:bg-[#4a2c14]"
+  >
+    ← Main page
+  </a>
+
+  <div
+    class="relative h-[80%] w-[86%] -rotate-[0.6deg] overflow-hidden rounded [box-shadow:0_30px_60px_rgba(0,0,0,0.55),0_0_0_10px_rgba(20,12,6,0.4)]"
+  >
+    <WorldMapDocument events={events} />
+  </div>
+  <EventBar events={events} />
 </div>

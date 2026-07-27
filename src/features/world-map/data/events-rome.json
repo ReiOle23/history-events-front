@@ -1,0 +1,82 @@
+[
+	{
+		"year": -753,
+		"text": "Traditional founding of the city of Rome by Romulus",
+		"lat": 41.90,
+		"lng": 12.50,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -509,
+		"text": "The Roman Republic was established after the overthrow of the monarchy",
+		"lat": 41.90,
+		"lng": 12.50,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -264,
+		"text": "The First Punic War began between Rome and Carthage",
+		"lat": 38.19,
+		"lng": 15.55,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -44,
+		"text": "Julius Caesar was assassinated in the Senate",
+		"lat": 41.90,
+		"lng": 12.48,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -27,
+		"text": "Augustus became Rome's first emperor, founding the Roman Empire",
+		"lat": 41.90,
+		"lng": 12.50,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 80,
+		"text": "The Colosseum was completed in Rome",
+		"lat": 41.89,
+		"lng": 12.49,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 117,
+		"text": "The Roman Empire reached its greatest territorial extent under Trajan",
+		"lat": 41.90,
+		"lng": 12.50,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 313,
+		"text": "Emperor Constantine issued the Edict of Milan, legalizing Christianity",
+		"lat": 45.46,
+		"lng": 9.19,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 395,
+		"text": "The Roman Empire split permanently into Western and Eastern halves",
+		"lat": 41.01,
+		"lng": 28.98,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 476,
+		"text": "The Western Roman Empire fell when Romulus Augustulus was deposed by Odoacer",
+		"lat": 44.42,
+		"lng": 12.20,
+		"characters": [],
+		"age": "Ancient History"
+	}
+]

@@ -1,0 +1,82 @@
+[
+	{
+		"year": -550,
+		"text": "Cyrus the Great founded the Achaemenid Persian Empire after conquering the Median Empire",
+		"lat": 30.19,
+		"lng": 53.17,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -539,
+		"text": "Cyrus the Great conquered Babylon and freed the Jewish exiles",
+		"lat": 32.54,
+		"lng": 44.42,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -525,
+		"text": "Cambyses II conquered Egypt, adding it to the Persian Empire",
+		"lat": 29.85,
+		"lng": 31.25,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -490,
+		"text": "Persian forces were defeated by the Greeks at the Battle of Marathon",
+		"lat": 38.15,
+		"lng": 23.97,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -480,
+		"text": "Xerxes I invaded Greece and won the Battle of Thermopylae",
+		"lat": 38.80,
+		"lng": 22.53,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -334,
+		"text": "Alexander the Great began his conquest of the Persian Empire at the Battle of Granicus",
+		"lat": 40.13,
+		"lng": 27.13,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -247,
+		"text": "The Parthian Empire was founded by Arsaces I",
+		"lat": 37.95,
+		"lng": 58.28,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 224,
+		"text": "Ardashir I overthrew the Parthians and founded the Sassanid Empire",
+		"lat": 29.95,
+		"lng": 52.89,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 260,
+		"text": "Sassanid King Shapur I captured Roman Emperor Valerian at Edessa",
+		"lat": 37.16,
+		"lng": 38.79,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 651,
+		"text": "The Sassanid Empire fell to the Arab conquests, ending ancient Persian rule",
+		"lat": 37.66,
+		"lng": 61.83,
+		"characters": [],
+		"age": "Post-Classical / Medieval Period"
+	}
+]

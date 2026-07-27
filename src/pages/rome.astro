@@ -1,0 +1,9 @@
+---
+import Layout from '../layouts/Layout.astro';
+import WorldMapPage from '../features/world-map/pages/WorldMapPage.astro';
+import events from '../features/world-map/data/events-rome.json';
+---
+
+<Layout>
+	<WorldMapPage events={events} />
+</Layout>

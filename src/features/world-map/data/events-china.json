@@ -1,0 +1,82 @@
+[
+	{
+		"year": -221,
+		"text": "Qin Shi Huang completed the unification of China, founding the Qin Dynasty",
+		"lat": 34.33,
+		"lng": 108.70,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -206,
+		"text": "The Han Dynasty was established after the fall of the Qin",
+		"lat": 34.27,
+		"lng": 108.95,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": -138,
+		"text": "Zhang Qian's mission to the west opened the Silk Road trade routes",
+		"lat": 40.14,
+		"lng": 94.66,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 105,
+		"text": "Cai Lun improved the papermaking technique during the Han Dynasty",
+		"lat": 34.68,
+		"lng": 112.45,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 220,
+		"text": "The Han Dynasty collapsed, beginning the Three Kingdoms period",
+		"lat": 34.68,
+		"lng": 112.45,
+		"characters": [],
+		"age": "Ancient History"
+	},
+	{
+		"year": 581,
+		"text": "Emperor Wen reunified China, founding the Sui Dynasty",
+		"lat": 34.27,
+		"lng": 108.95,
+		"characters": [],
+		"age": "Post-Classical / Medieval Period"
+	},
+	{
+		"year": 618,
+		"text": "The Tang Dynasty was founded, ushering in a golden age",
+		"lat": 34.27,
+		"lng": 108.95,
+		"characters": [],
+		"age": "Post-Classical / Medieval Period"
+	},
+	{
+		"year": 1279,
+		"text": "The Mongols under Kublai Khan established the Yuan Dynasty",
+		"lat": 39.90,
+		"lng": 116.40,
+		"characters": [],
+		"age": "Post-Classical / Medieval Period"
+	},
+	{
+		"year": 1368,
+		"text": "Zhu Yuanzhang founded the Ming Dynasty",
+		"lat": 32.06,
+		"lng": 118.79,
+		"characters": [],
+		"age": "Post-Classical / Medieval Period"
+	},
+	{
+		"year": 1644,
+		"text": "The Qing Dynasty was established after the fall of the Ming",
+		"lat": 39.90,
+		"lng": 116.40,
+		"characters": [],
+		"age": "Early Modern Period"
+	}
+]

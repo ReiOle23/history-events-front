@@ -32,9 +32,9 @@ To learn more about the folder structure of an Astro project, refer to [our guid
 
 All commands are run from the root of the project, from a terminal:
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `pnpm install`             | Installs dependencies                            |
+| Command                | Action                                           |
+| :--------------------- | :----------------------------------------------- |
+| `pnpm install`         | Installs dependencies                            |
 | `pnpm dev`             | Starts local dev server at `localhost:4321`      |
 | `pnpm build`           | Build your production site to `./dist/`          |
 | `pnpm preview`         | Preview your build locally, before deploying     |
@@ -44,3 +44,11 @@ All commands are run from the root of the project, from a terminal:
 ## 👀 Want to learn more?
 
 Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+
+## Ages
+
+- Prehistory — before written records
+- Ancient History (~3000 BCE–500 CE): Egypt, Mesopotamia, Greece, Rome, early China and India
+- Post-Classical / Medieval Period (~500–1500 CE): feudalism, the Islamic Golden Age, Byzantine Empire, medieval Europe
+- Early Modern Period (~1500–1800 CE): Renaissance, Age of Exploration, Reformation, rise of nation-states
+- Modern Period (~1800–present): Industrial Revolution, world wars, the Information Age

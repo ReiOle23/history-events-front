@@ -2,7 +2,33 @@
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import countries110m from "world-atlas/countries-110m.json";
-import events from "../data/events.json";
+import ancientAgeMap from "../../../assets/ancient-age.webp";
+import medievalAgeMap from "../../../assets/medieval-age.webp";
+import modernAgeMap from "../../../assets/modern-age.webp";
+import defaultEvents from "../data/events.json";
+
+// Each event's `age` picks the era-appropriate map raster behind it.
+const AGE_MAPS: Record<string, string> = {
+  "Ancient History": ancientAgeMap.src,
+  "Post-Classical / Medieval Period": medievalAgeMap.src,
+  "Early Modern Period": modernAgeMap.src,
+};
+const mapForAge = (age: string): string => AGE_MAPS[age] ?? modernAgeMap.src;
+
+interface HistoryEvent {
+  year: number;
+  text: string;
+  lat: number;
+  lng: number;
+  characters: string[];
+  age: string;
+}
+
+interface Props {
+  events?: HistoryEvent[];
+}
+
+const { events = defaultEvents } = Astro.props;
 
 type Position = [number, number];
 type PolygonGeometry = { type: "Polygon"; coordinates: Position[][] };
@@ -18,10 +44,10 @@ const project = ([lng, lat]: Position): Position => [lng, -lat];
 // Unwrap longitude relative to the previous point so rings that cross the
 // antimeridian (e.g. Russia, Fiji) draw off the edge of the map instead of a
 // spurious line straight across it.
-const ringToPath = (ring: Position[]): string => {
+const ringToPoints = (ring: Position[]): Position[] => {
   let previousLng = ring[0][0];
 
-  const points = ring.map(([lng, lat], i) => {
+  return ring.map(([lng, lat], i) => {
     let unwrappedLng = lng;
     if (i > 0) {
       while (unwrappedLng - previousLng > 180) unwrappedLng -= 360;
@@ -30,16 +56,83 @@ const ringToPath = (ring: Position[]): string => {
     previousLng = unwrappedLng;
     return project([unwrappedLng, lat]);
   });
-
-  return `${points.map((point, i) => `${i === 0 ? "M" : "L"}${point.join(",")}`).join(" ")} Z`;
 };
+
+const pointsToPath = (points: Position[]): string =>
+  `${points.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(" ")} Z`;
 
 const geometryToPath = (geometry: CountryGeometry): string =>
   geometry.type === "Polygon"
-    ? geometry.coordinates.map(ringToPath).join(" ")
+    ? geometry.coordinates
+        .map((ring) => pointsToPath(ringToPoints(ring)))
+        .join(" ")
     : geometry.coordinates
-        .map((polygon) => polygon.map(ringToPath).join(" "))
+        .map((polygon) =>
+          polygon.map((ring) => pointsToPath(ringToPoints(ring))).join(" "),
+        )
         .join(" ");
+
+// Outer ring (no holes) of every polygon in the geometry, in projected
+// coordinates — used to place terrain icons on land rather than in the sea.
+const geometryToOuterRings = (geometry: CountryGeometry): Position[][] =>
+  geometry.type === "Polygon"
+    ? [ringToPoints(geometry.coordinates[0])]
+    : geometry.coordinates.map((polygon) => ringToPoints(polygon[0]));
+
+const ringBBox = (ring: Position[]) => {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY };
+};
+
+const ringArea = (ring: Position[]): number => {
+  let sum = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[(i + 1) % ring.length];
+    sum += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(sum) / 2;
+};
+
+const pointInRing = ([px, py]: Position, ring: Position[]): boolean => {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersects =
+      yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+};
+
+// Deterministic per-name RNG so icon placement is stable across rebuilds
+// instead of reshuffling on every server render.
+const hashSeed = (str: string): number => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return hash || 1;
+};
+
+const seededRandom = (seed: number) => {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+};
 
 const topology = countries110m as unknown as Topology;
 const geoJson = feature(
@@ -47,10 +140,105 @@ const geoJson = feature(
   topology.objects.countries as GeometryCollection,
 );
 
-const countries = geoJson.features.map((f) => ({
-  name: (f.properties as { name: string }).name,
-  path: geometryToPath(f.geometry as unknown as CountryGeometry),
-}));
+// Muted watercolor tones evoking the antique map's hand-painted empire
+// blocks, picked by a stable per-name hash rather than real 1600s borders.
+const COUNTRY_PALETTE = [
+  "#c9a084", // faded terracotta
+  "#a8ac7e", // sage olive
+  "#c7a750", // aged gold
+  "#8fa1a8", // slate blue
+  "#b98f7f", // dusty rose
+  "#a6976c", // parchment tan
+];
+
+const colorForCountry = (name: string): string =>
+  COUNTRY_PALETTE[hashSeed(name) % COUNTRY_PALETTE.length];
+
+type TerrainIcon = {
+  x: number;
+  y: number;
+  kind: "mountain" | "forest";
+  scale: number;
+};
+
+// Land masses below this projected area (deg²) are too small to carry
+// legible terrain icons, so they stay plain color blocks.
+const MIN_AREA_FOR_ICONS = 6;
+const MAX_ICONS_PER_COUNTRY = 4;
+
+const countries = geoJson.features.map((f) => {
+  const name = (f.properties as { name: string }).name;
+  const geometry = f.geometry as unknown as CountryGeometry;
+  const path = geometryToPath(geometry);
+  const color = colorForCountry(name);
+
+  const outerRings = geometryToOuterRings(geometry);
+  const mainRing = outerRings.reduce((largest, ring) =>
+    ringArea(ring) > ringArea(largest) ? ring : largest,
+  );
+  const area = ringArea(mainRing);
+
+  const icons: TerrainIcon[] = [];
+  if (area > MIN_AREA_FOR_ICONS) {
+    const bbox = ringBBox(mainRing);
+    const rand = seededRandom(hashSeed(name));
+    const targetCount = Math.min(
+      MAX_ICONS_PER_COUNTRY,
+      Math.round(area / 45) + 1,
+    );
+    let attempts = 0;
+    while (icons.length < targetCount && attempts < targetCount * 15) {
+      attempts++;
+      const x = bbox.minX + rand() * (bbox.maxX - bbox.minX);
+      const y = bbox.minY + rand() * (bbox.maxY - bbox.minY);
+      if (pointInRing([x, y], mainRing)) {
+        icons.push({
+          x,
+          y,
+          kind: rand() > 0.55 ? "mountain" : "forest",
+          scale: 0.45 + rand() * 0.35,
+        });
+      }
+    }
+  }
+
+  return { name, path, color, icons };
+});
+
+const terrainIcons = countries.flatMap((c) => c.icons);
+
+// Hand-picked open-ocean coordinates (checked against real coastlines) for
+// decorative ship and sea-monster icons, echoing the ones on the antique art.
+const OCEAN_SPOTS: {
+  lng: number;
+  lat: number;
+  kind: "ship" | "monster";
+  rotation: number;
+  scale: number;
+}[] = [
+  { lng: -35, lat: 15, kind: "ship", rotation: 20, scale: 1 },
+  { lng: -30, lat: 50, kind: "monster", rotation: -10, scale: 1 },
+  { lng: -20, lat: -35, kind: "ship", rotation: -15, scale: 0.9 },
+  { lng: -160, lat: 35, kind: "monster", rotation: 12, scale: 1.1 },
+  { lng: -140, lat: -25, kind: "ship", rotation: 25, scale: 1 },
+  { lng: 70, lat: -25, kind: "monster", rotation: -8, scale: 1 },
+  { lng: 88, lat: 12, kind: "ship", rotation: -20, scale: 0.9 },
+  { lng: 150, lat: 10, kind: "monster", rotation: 6, scale: 1 },
+];
+
+const oceanIcons = OCEAN_SPOTS.map((spot) => {
+  const [x, y] = project([spot.lng, spot.lat]);
+  return { x, y, kind: spot.kind, rotation: spot.rotation, scale: spot.scale };
+});
+
+// Fixed aging blotches (in world coords) layered under the grain/vignette for
+// a weathered, stained-parchment look.
+const STAIN_SPOTS: Position[] = [
+  [-70, -10],
+  [95, 5],
+  [-15, 45],
+  [130, -35],
+];
 
 // Characters whose events get a spyglass target marker on the map.
 const TARGET_CHARACTERS = [
@@ -71,8 +259,18 @@ const timeline = events.map((event) => {
   const hasTarget = event.characters.some((name) =>
     TARGET_CHARACTERS.includes(name),
   );
-  return { year: event.year, text: event.text, x, y, focusViewBox, hasTarget };
+  return {
+    year: event.year,
+    text: event.text,
+    x,
+    y,
+    focusViewBox,
+    hasTarget,
+    mapSrc: mapForAge(event.age),
+  };
 });
+
+const initialMapSrc = mapForAge(events[0]?.age ?? "");
 ---
 
 <div class="relative h-full w-full overflow-hidden bg-[#e8d9b5]">
@@ -82,17 +280,185 @@ const timeline = events.map((event) => {
     preserveAspectRatio="xMidYMid slice"
     class="h-full w-full"
   >
-    {
-      countries.map((country) => (
+    <image
+      id="map-raster"
+      href={initialMapSrc}
+      x="-180"
+      y="-90"
+      width="360"
+      height="180"
+      preserveAspectRatio="xMidYMid slice"
+    />
+    <defs>
+      <filter id="paper-grain" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.9"
+          numOctaves="2"
+          seed="7"
+          result="noise"></feTurbulence>
+        <feColorMatrix
+          in="noise"
+          type="matrix"
+          values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.4 0"></feColorMatrix>
+      </filter>
+      <filter
+        id="sketchy"
+        x="-50%"
+        y="-50%"
+        width="200%"
+        height="200%"
+        filterUnits="objectBoundingBox"
+      >
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.4"
+          numOctaves="2"
+          seed="11"
+          result="wobble"></feTurbulence>
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="wobble"
+          scale="0.1"
+          xChannelSelector="R"
+          yChannelSelector="G"></feDisplacementMap>
+      </filter>
+      <filter id="soft-blur" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="4"></feGaussianBlur>
+      </filter>
+      <radialGradient id="vignette-gradient" cx="50%" cy="50%" r="70%">
+        <stop offset="55%" stop-color="#2a1608" stop-opacity="0"></stop>
+        <stop offset="100%" stop-color="#2a1608" stop-opacity="0.55"></stop>
+      </radialGradient>
+      <symbol id="icon-mountain" viewBox="0 0 20 14">
         <path
-          d={country.path}
-          fill-rule="evenodd"
-          class="fill-[#c9b48f] stroke-[#5b4636] [stroke-width:0.3]"
-        >
-          <title>{country.name}</title>
-        </path>
-      ))
-    }
+          d="M1,13 L6,3 L9,7 L13,1 L19,13 Z"
+          fill="#5b4636"
+          fill-opacity="0.3"
+          stroke="#3a2414"
+          stroke-width="0.4"
+          stroke-opacity="0.75"
+          stroke-linejoin="round"></path>
+        <path
+          d="M6,3 L4,7 M13,1 L11,5"
+          fill="none"
+          stroke="#3a2414"
+          stroke-width="0.35"
+          stroke-opacity="0.5"></path>
+      </symbol>
+      <symbol id="icon-forest" viewBox="0 0 20 14">
+        <g stroke="#3a2414" stroke-width="0.5" stroke-linecap="round">
+          <path d="M4,4 L1,9.5 L7,9.5 Z" fill="#4a5a34" fill-opacity="0.6"
+          ></path>
+          <line x1="4" y1="9.5" x2="4" y2="12.5"></line>
+          <path d="M10,3 L6.5,9.5 L13.5,9.5 Z" fill="#55663c" fill-opacity="0.6"
+          ></path>
+          <line x1="10" y1="9.5" x2="10" y2="13"></line>
+          <path d="M16,4.5 L13,9.5 L19,9.5 Z" fill="#4a5a34" fill-opacity="0.6"
+          ></path>
+          <line x1="16" y1="9.5" x2="16" y2="12.5"></line>
+        </g>
+      </symbol>
+      <symbol id="icon-ship" viewBox="0 0 24 24">
+        <path
+          d="M4,16 L20,16 L17,20 L7,20 Z"
+          fill="#3a2414"
+          fill-opacity="0.75"
+          stroke="#2a1608"
+          stroke-width="0.6"></path>
+        <line x1="12" y1="16" x2="12" y2="4" stroke="#2a1608" stroke-width="0.7"
+        ></line>
+        <path
+          d="M12,5 L20,15 L12,15 Z"
+          fill="#e8d9b5"
+          fill-opacity="0.85"
+          stroke="#2a1608"
+          stroke-width="0.5"></path>
+      </symbol>
+      <symbol id="icon-monster" viewBox="0 0 30 16">
+        <path
+          d="M1,12 Q5,2 9,10 Q13,2 17,10 Q21,2 25,10 Q27,11 29,9"
+          fill="none"
+          stroke="#3a2414"
+          stroke-width="1.1"
+          stroke-linecap="round"></path>
+        <circle cx="27" cy="8" r="1.3" fill="#3a2414"></circle>
+      </symbol>
+    </defs>
+    <g
+      id="vector-countries"
+      class="[filter:url(#sketchy)_sepia(0.5)_saturate(1.25)_contrast(1.12)]"
+      style="opacity: 0"
+    >
+      <rect x="-180" y="-90" width="360" height="180" class="fill-[#e8d9b5]"
+      ></rect>
+      {
+        countries.map((country) => (
+          <path
+            d={country.path}
+            fill-rule="evenodd"
+            fill={country.color}
+            fill-opacity="0.75"
+            stroke="#3a2414"
+            stroke-width="0.28"
+            stroke-opacity="0.8"
+          >
+            <title>{country.name}</title>
+          </path>
+        ))
+      }
+      {
+        terrainIcons.map((icon) => (
+          <use
+            href={`#icon-${icon.kind}`}
+            x={icon.x - icon.scale}
+            y={icon.y - 0.7 * icon.scale}
+            width={2 * icon.scale}
+            height={1.4 * icon.scale}
+          />
+        ))
+      }
+      {
+        oceanIcons.map((icon) => (
+          <use
+            href={`#icon-${icon.kind}`}
+            x={icon.x - 2 * icon.scale}
+            y={icon.y - 1.2 * icon.scale}
+            width={4 * icon.scale}
+            height={2.4 * icon.scale}
+            transform={`rotate(${icon.rotation} ${icon.x} ${icon.y})`}
+            opacity="0.85"
+          />
+        ))
+      }
+      {
+        STAIN_SPOTS.map(([x, y]) => (
+          <ellipse
+            cx={x}
+            cy={y}
+            rx="18"
+            ry="12"
+            fill="#4a2c14"
+            opacity="0.14"
+            filter="url(#soft-blur)"
+          />
+        ))
+      }
+      <rect
+        x="-180"
+        y="-90"
+        width="360"
+        height="180"
+        filter="url(#paper-grain)"
+        class="pointer-events-none mix-blend-multiply opacity-30"></rect>
+      <rect
+        x="-180"
+        y="-90"
+        width="360"
+        height="180"
+        fill="url(#vignette-gradient)"
+        class="pointer-events-none mix-blend-multiply"></rect>
+    </g>
     <g id="target-marker" class="hidden">
       <circle
         r="2.1"
@@ -140,6 +506,16 @@ const timeline = events.map((event) => {
         class="stroke-[#c9a13b]"
         stroke-width="0.16"></line>
     </g>
+    <g id="location-marker" class="hidden">
+      <circle
+        r="0.28"
+        class="fill-[#dc2626] opacity-70 [animation:ping_1.6s_cubic-bezier(0,0,0.2,1)_infinite]"
+        style="transform-origin: 0px 0px;"></circle>
+      <circle
+        r="0.16"
+        class="fill-[#ef4444] stroke-[#7f1d1d]"
+        stroke-width="0.05"></circle>
+    </g>
   </svg>
 
   <div
@@ -164,6 +540,9 @@ const timeline = events.map((event) => {
   const textEl = document.getElementById("event-text");
   const card = document.getElementById("event-card");
   const targetMarker = document.getElementById("target-marker");
+  const locationMarker = document.getElementById("location-marker");
+  const mapRaster = document.getElementById("map-raster");
+  const vectorCountries = document.getElementById("vector-countries");
 
   const parseBox = (str) => str.split(" ").map(Number);
   const boxToStr = (box) => box.join(" ");
@@ -171,10 +550,30 @@ const timeline = events.map((event) => {
   const easeInOutCubic = (t) =>
     t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
+  // Below this viewBox width the antique art is too zoomed-in to read cleanly,
+  // so we crossfade to the vector country map, which stays crisp at any zoom.
+  const RASTER_FADE_START_WIDTH = 120;
+  const RASTER_FADE_END_WIDTH = 30;
+
+  function updateCrossfade(width) {
+    const t = Math.min(
+      Math.max(
+        (RASTER_FADE_START_WIDTH - width) /
+          (RASTER_FADE_START_WIDTH - RASTER_FADE_END_WIDTH),
+        0,
+      ),
+      1,
+    );
+    mapRaster.style.opacity = String(1 - t);
+    vectorCountries.style.opacity = String(t);
+  }
+
   let currentBox = parseBox(worldViewBox);
   let rafId = null;
   let advanceTimeout = null;
   let autoplay = true;
+
+  updateCrossfade(currentBox[2]);
 
   function animateTo(targetBox, durationMs, onDone) {
     if (rafId) cancelAnimationFrame(rafId);
@@ -186,6 +585,7 @@ const timeline = events.map((event) => {
       const eased = easeInOutCubic(t);
       const box = startBox.map((v, i) => lerp(v, targetBox[i], eased));
       svg.setAttribute("viewBox", boxToStr(box));
+      updateCrossfade(box[2]);
       if (t < 1) {
         rafId = requestAnimationFrame(step);
       } else {
@@ -215,6 +615,10 @@ const timeline = events.map((event) => {
     textEl.textContent = entry.text;
     card.classList.remove("opacity-0");
 
+    if (mapRaster.getAttribute("href") !== entry.mapSrc) {
+      mapRaster.setAttribute("href", entry.mapSrc);
+    }
+
     if (entry.hasTarget) {
       targetMarker.setAttribute(
         "transform",
@@ -224,6 +628,12 @@ const timeline = events.map((event) => {
     } else {
       targetMarker.classList.add("hidden");
     }
+
+    locationMarker.setAttribute(
+      "transform",
+      `translate(${entry.x}, ${entry.y})`,
+    );
+    locationMarker.classList.remove("hidden");
 
     updateActiveButton(index);
 
@@ -242,6 +652,7 @@ const timeline = events.map((event) => {
     animateTo(parseBox(worldViewBox), focusDuration * 1000, () => {
       card.classList.add("opacity-0");
       targetMarker.classList.add("hidden");
+      locationMarker.classList.add("hidden");
       updateActiveButton(-1);
     });
   }
