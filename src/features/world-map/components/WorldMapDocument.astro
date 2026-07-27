@@ -5,6 +5,7 @@ import countries110m from "world-atlas/countries-110m.json";
 import ancientAgeMap from "../../../assets/ancient-age.webp";
 import medievalAgeMap from "../../../assets/medieval-age.webp";
 import modernAgeMap from "../../../assets/modern-age.webp";
+import generalExample from "../../../assets/generalExample.webp";
 import defaultEvents from "../data/events.json";
 
 // Each event's `age` picks the era-appropriate map raster behind it.
@@ -115,6 +116,22 @@ const pointInRing = ([px, py]: Position, ring: Position[]): boolean => {
   return inside;
 };
 
+// Sample a point inside the ring by rejection, using the seeded RNG so the
+// result is stable across rebuilds. Returns null if none found in the budget.
+const placePointInRing = (
+  rand: () => number,
+  bbox: { minX: number; minY: number; maxX: number; maxY: number },
+  ring: Position[],
+  maxAttempts: number,
+): Position | null => {
+  for (let i = 0; i < maxAttempts; i++) {
+    const x = bbox.minX + rand() * (bbox.maxX - bbox.minX);
+    const y = bbox.minY + rand() * (bbox.maxY - bbox.minY);
+    if (pointInRing([x, y], ring)) return [x, y];
+  }
+  return null;
+};
+
 // Deterministic per-name RNG so icon placement is stable across rebuilds
 // instead of reshuffling on every server render.
 const hashSeed = (str: string): number => {
@@ -140,15 +157,19 @@ const geoJson = feature(
   topology.objects.countries as GeometryCollection,
 );
 
-// Muted watercolor tones evoking the antique map's hand-painted empire
-// blocks, picked by a stable per-name hash rather than real 1600s borders.
+// Sea rendered as its own layer (outside the sepia tint) so the water stays a
+// clear map-blue that's easy to pick out from land.
+const SEA_COLOR = "#4f86b6";
+
+// A tight, harmonious range of warm parchment/land tones. Kept close together
+// (no rainbow) so the map reads as one consistent aged sheet with only subtle
+// per-country variation, picked by a stable per-name hash.
 const COUNTRY_PALETTE = [
-  "#c9a084", // faded terracotta
-  "#a8ac7e", // sage olive
-  "#c7a750", // aged gold
-  "#8fa1a8", // slate blue
-  "#b98f7f", // dusty rose
-  "#a6976c", // parchment tan
+  "#c9b083", // parchment tan
+  "#c3a878", // deeper tan
+  "#cdb78e", // pale wheat
+  "#bfa878", // olive tan
+  "#c7ad7d", // aged straw
 ];
 
 const colorForCountry = (name: string): string =>
@@ -166,6 +187,18 @@ type TerrainIcon = {
 const MIN_AREA_FOR_ICONS = 6;
 const MAX_ICONS_PER_COUNTRY = 4;
 
+type Settlement = {
+  x: number;
+  y: number;
+  kind: "village" | "city";
+  scale: number;
+};
+
+// Great cities sit only on sizable land masses; villages dot the rest so the
+// map reads as inhabited rather than empty.
+const CITY_MIN_AREA = 25;
+const MAX_VILLAGES_PER_COUNTRY = 3;
+
 const countries = geoJson.features.map((f) => {
   const name = (f.properties as { name: string }).name;
   const geometry = f.geometry as unknown as CountryGeometry;
@@ -179,6 +212,7 @@ const countries = geoJson.features.map((f) => {
   const area = ringArea(mainRing);
 
   const icons: TerrainIcon[] = [];
+  const settlements: Settlement[] = [];
   if (area > MIN_AREA_FOR_ICONS) {
     const bbox = ringBBox(mainRing);
     const rand = seededRandom(hashSeed(name));
@@ -200,12 +234,44 @@ const countries = geoJson.features.map((f) => {
         });
       }
     }
+
+    // One great walled city on larger land masses.
+    if (area > CITY_MIN_AREA) {
+      const city = placePointInRing(rand, bbox, mainRing, 30);
+      if (city) {
+        settlements.push({
+          x: city[0],
+          y: city[1],
+          kind: "city",
+          scale: 0.9 + rand() * 0.3,
+        });
+      }
+    }
+
+    // A scattering of small villages, more on bigger countries.
+    const villageCount = Math.min(
+      MAX_VILLAGES_PER_COUNTRY,
+      Math.round(area / 50) + 1,
+    );
+    let villages = 0;
+    while (villages < villageCount) {
+      const spot = placePointInRing(rand, bbox, mainRing, 20);
+      if (!spot) break;
+      settlements.push({
+        x: spot[0],
+        y: spot[1],
+        kind: "village",
+        scale: 0.55 + rand() * 0.3,
+      });
+      villages++;
+    }
   }
 
-  return { name, path, color, icons };
+  return { name, path, color, icons, settlements };
 });
 
 const terrainIcons = countries.flatMap((c) => c.icons);
+const settlementIcons = countries.flatMap((c) => c.settlements);
 
 // Hand-picked open-ocean coordinates (checked against real coastlines) for
 // decorative ship and sea-monster icons, echoing the ones on the antique art.
@@ -229,6 +295,28 @@ const OCEAN_SPOTS: {
 const oceanIcons = OCEAN_SPOTS.map((spot) => {
   const [x, y] = project([spot.lng, spot.lat]);
   return { x, y, kind: spot.kind, rotation: spot.rotation, scale: spot.scale };
+});
+
+// A few small wave glyphs dotted across open water (not a full-sea texture),
+// placed at hand-picked ocean coordinates clear of land.
+const WAVE_SPOTS: { lng: number; lat: number; scale: number }[] = [
+  { lng: -42, lat: 33, scale: 1 },
+  { lng: -28, lat: 8, scale: 0.9 },
+  { lng: -22, lat: -22, scale: 1 },
+  { lng: -55, lat: 48, scale: 0.85 },
+  { lng: -125, lat: 5, scale: 1 },
+  { lng: -150, lat: -12, scale: 0.9 },
+  { lng: -148, lat: 22, scale: 1 },
+  { lng: 168, lat: -8, scale: 0.9 },
+  { lng: 78, lat: -18, scale: 1 },
+  { lng: 92, lat: -38, scale: 0.85 },
+  { lng: 25, lat: -52, scale: 0.9 },
+  { lng: -105, lat: -38, scale: 1 },
+];
+
+const waveIcons = WAVE_SPOTS.map((spot) => {
+  const [x, y] = project([spot.lng, spot.lat]);
+  return { x, y, scale: spot.scale };
 });
 
 // Fixed aging blotches (in world coords) layered under the grain/vignette for
@@ -266,6 +354,7 @@ const timeline = events.map((event) => {
     y,
     focusViewBox,
     hasTarget,
+    hasCharacter: event.characters.length > 0,
     mapSrc: mapForAge(event.age),
   };
 });
@@ -330,6 +419,22 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
         <stop offset="55%" stop-color="#2a1608" stop-opacity="0"></stop>
         <stop offset="100%" stop-color="#2a1608" stop-opacity="0.55"></stop>
       </radialGradient>
+      <symbol id="icon-waves" viewBox="0 0 12 6">
+        <path
+          d="M1,2 q1.5,-1.5 3,0 t3,0"
+          fill="none"
+          stroke="#e6f1f8"
+          stroke-opacity="0.6"
+          stroke-width="0.5"
+          stroke-linecap="round"></path>
+        <path
+          d="M2.5,4 q1.5,-1.5 3,0 t3,0"
+          fill="none"
+          stroke="#e6f1f8"
+          stroke-opacity="0.45"
+          stroke-width="0.5"
+          stroke-linecap="round"></path>
+      </symbol>
       <symbol id="icon-mountain" viewBox="0 0 20 14">
         <path
           d="M1,13 L6,3 L9,7 L13,1 L19,13 Z"
@@ -359,6 +464,36 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
           <line x1="16" y1="9.5" x2="16" y2="12.5"></line>
         </g>
       </symbol>
+      <symbol id="icon-village" viewBox="0 0 12 8">
+        <g stroke="#3a2414" stroke-width="0.45" stroke-linejoin="round">
+          <path d="M2,7 L2,4 L4,2.5 L6,4 L6,7 Z" fill="#7a5636"
+            fill-opacity="0.75"></path>
+          <path d="M7,7 L7,4.7 L8.5,3.5 L10,4.7 L10,7 Z" fill="#6b4a2f"
+            fill-opacity="0.75"></path>
+        </g>
+      </symbol>
+      <symbol id="icon-city" viewBox="0 0 16 12">
+        <g
+          stroke="#3a2414"
+          stroke-width="0.5"
+          stroke-linejoin="round"
+          fill="#7a5636"
+          fill-opacity="0.8"
+        >
+          <rect x="2" y="6" width="12" height="5"></rect>
+          <rect x="0.75" y="4" width="2.6" height="7"></rect>
+          <rect x="6.7" y="3" width="2.6" height="8"></rect>
+          <rect x="12.6" y="4" width="2.6" height="7"></rect>
+        </g>
+        <g stroke="#3a2414" stroke-width="0.4" stroke-linejoin="round">
+          <path d="M0.5,4 L2.05,1.8 L3.6,4 Z" fill="#8a2020" fill-opacity="0.8"
+          ></path>
+          <path d="M6.45,3 L8,0.7 L9.55,3 Z" fill="#8a2020" fill-opacity="0.8"
+          ></path>
+          <path d="M12.35,4 L13.9,1.8 L15.45,4 Z" fill="#8a2020"
+            fill-opacity="0.8"></path>
+        </g>
+      </symbol>
       <symbol id="icon-ship" viewBox="0 0 24 24">
         <path
           d="M4,16 L20,16 L17,20 L7,20 Z"
@@ -385,20 +520,32 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
         <circle cx="27" cy="8" r="1.3" fill="#3a2414"></circle>
       </symbol>
     </defs>
+    <g id="vector-sea" style="opacity: 0" filter="url(#sketchy)">
+      <rect x="-180" y="-90" width="360" height="180" fill={SEA_COLOR}></rect>
+      {
+        waveIcons.map((w) => (
+          <use
+            href="#icon-waves"
+            x={w.x - 1.5 * w.scale}
+            y={w.y - 0.75 * w.scale}
+            width={3 * w.scale}
+            height={1.5 * w.scale}
+          />
+        ))
+      }
+    </g>
     <g
       id="vector-countries"
       class="[filter:url(#sketchy)_sepia(0.5)_saturate(1.25)_contrast(1.12)]"
       style="opacity: 0"
     >
-      <rect x="-180" y="-90" width="360" height="180" class="fill-[#e8d9b5]"
-      ></rect>
       {
         countries.map((country) => (
           <path
             d={country.path}
             fill-rule="evenodd"
             fill={country.color}
-            fill-opacity="0.75"
+            fill-opacity="0.92"
             stroke="#3a2414"
             stroke-width="0.28"
             stroke-opacity="0.8"
@@ -417,6 +564,27 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
             height={1.4 * icon.scale}
           />
         ))
+      }
+      {
+        settlementIcons.map((s) =>
+          s.kind === "city" ? (
+            <use
+              href="#icon-city"
+              x={s.x - 1.9 * s.scale}
+              y={s.y - 1.4 * s.scale}
+              width={3.8 * s.scale}
+              height={2.85 * s.scale}
+            />
+          ) : (
+            <use
+              href="#icon-village"
+              x={s.x - 1.1 * s.scale}
+              y={s.y - 0.73 * s.scale}
+              width={2.2 * s.scale}
+              height={1.47 * s.scale}
+            />
+          ),
+        )
       }
       {
         oceanIcons.map((icon) => (
@@ -516,6 +684,22 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
         class="fill-[#ef4444] stroke-[#7f1d1d]"
         stroke-width="0.05"></circle>
     </g>
+    <g id="character-image" class="hidden">
+      <rect
+        width="4.4"
+        height="5.8"
+        rx="0.25"
+        fill="#2a1608"
+        stroke="#9c7a24"
+        stroke-width="0.15"></rect>
+      <image
+        href={generalExample.src}
+        x="0.15"
+        y="0.15"
+        width="4.1"
+        height="5.5"
+        preserveAspectRatio="xMidYMid slice"></image>
+    </g>
   </svg>
 
   <div
@@ -542,7 +726,15 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   const targetMarker = document.getElementById("target-marker");
   const locationMarker = document.getElementById("location-marker");
   const mapRaster = document.getElementById("map-raster");
+  const vectorSea = document.getElementById("vector-sea");
   const vectorCountries = document.getElementById("vector-countries");
+  const characterImage = document.getElementById("character-image");
+
+  // Portrait card placed beside the event point (never over it). Gap clears the
+  // target-marker rings; it flips to the other side near the map's right edge.
+  const CHAR_GAP = 3.4;
+  const CHAR_WIDTH = 4.4;
+  const CHAR_HEIGHT = 5.8;
 
   const parseBox = (str) => str.split(" ").map(Number);
   const boxToStr = (box) => box.join(" ");
@@ -565,6 +757,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
       1,
     );
     mapRaster.style.opacity = String(1 - t);
+    vectorSea.style.opacity = String(t);
     vectorCountries.style.opacity = String(t);
   }
 
@@ -635,6 +828,16 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     );
     locationMarker.classList.remove("hidden");
 
+    if (entry.hasCharacter) {
+      let imgX = entry.x + CHAR_GAP;
+      if (imgX + CHAR_WIDTH > 180) imgX = entry.x - CHAR_GAP - CHAR_WIDTH;
+      const imgY = entry.y - CHAR_HEIGHT / 2;
+      characterImage.setAttribute("transform", `translate(${imgX}, ${imgY})`);
+      characterImage.classList.remove("hidden");
+    } else {
+      characterImage.classList.add("hidden");
+    }
+
     updateActiveButton(index);
 
     const focusBox = parseBox(entry.focusViewBox);
@@ -653,6 +856,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
       card.classList.add("opacity-0");
       targetMarker.classList.add("hidden");
       locationMarker.classList.add("hidden");
+      characterImage.classList.add("hidden");
       updateActiveButton(-1);
     });
   }
