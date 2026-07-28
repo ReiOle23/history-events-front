@@ -69,6 +69,13 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
 >
   <canvas id="three-canvas" class="block h-full w-full"></canvas>
 
+  {/* Lamplit vignette over the whole scene, the way the SVG map darkens toward
+  the edges of the sheet. */}
+  <div
+    class="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_38%,rgba(28,17,9,0.45)_78%,rgba(20,12,6,0.8)_100%)]"
+  >
+  </div>
+
   <a
     href="/"
     class="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-4 py-2 font-serif text-sm font-bold text-[#c9a13b] transition-colors hover:bg-[#4a2c14]"
@@ -78,7 +85,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
 
   <div
     id="event-card"
-    class="pointer-events-none absolute inset-x-0 top-6 mx-auto w-fit max-w-[85%] rounded-lg border-2 border-[#9c7a24] bg-[#2a1608]/90 px-6 py-3 text-center opacity-0 transition-opacity duration-500 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
+    class="pointer-events-none absolute inset-x-0 top-6 z-20 mx-auto w-fit max-w-[85%] rounded-lg border-2 border-[#9c7a24] bg-[#2a1608]/90 px-6 py-3 text-center opacity-0 transition-opacity duration-500 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
   >
     <p id="event-year" class="font-serif text-2xl font-bold text-[#c9a13b]"></p>
     <p id="event-text" class="font-serif text-base text-[#e8d9b5]"></p>
@@ -100,6 +107,9 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+  import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+  import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+  import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
   import { feature, merge } from "topojson-client";
   import type { GeometryCollection, Topology } from "topojson-specification";
   import countries110m from "world-atlas/countries-110m.json";
@@ -189,6 +199,140 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   }
   setMapTexture(initialMapSrc);
 
+  // Aging washes for the vector sheet, drawn once to tiling canvases. They
+  // multiply the flat fills, so the map reads as stained paper and inked water
+  // instead of blocks of color. White is neutral; every mark darkens.
+  const TILE = 512;
+  const TILE_UNITS = 3.6; // world units one tile covers
+
+  const seededRandom = (seed: number) => {
+    let s = seed >>> 0;
+    return () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  };
+
+  // Marks are stamped nine times, once per neighbouring tile, so anything
+  // crossing an edge continues on the far side and the tiling stays seamless.
+  const stampTiled = (x: number, y: number, paint: (x: number, y: number) => void) => {
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) paint(x + ox * TILE, y + oy * TILE);
+    }
+  };
+
+  function washTexture(draw: (ctx: CanvasRenderingContext2D) => void) {
+    const canvas = document.createElement("canvas");
+    canvas.width = TILE;
+    canvas.height = TILE;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, TILE, TILE);
+    draw(ctx);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return texture;
+  }
+
+  const parchmentTexture = washTexture((ctx) => {
+    const rand = seededRandom(20260728);
+
+    // Paper fibre and speckle.
+    for (let i = 0; i < 1600; i++) {
+      const x = rand() * TILE;
+      const y = rand() * TILE;
+      const radius = 0.8 + rand() * 2.6;
+      ctx.fillStyle = `rgba(92, 68, 36, ${0.03 + rand() * 0.06})`;
+      stampTiled(x, y, (sx, sy) => {
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // Damp stains soaked into the sheet.
+    for (let i = 0; i < 24; i++) {
+      const x = rand() * TILE;
+      const y = rand() * TILE;
+      const radius = 26 + rand() * 78;
+      stampTiled(x, y, (sx, sy) => {
+        const stain = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+        stain.addColorStop(0, `rgba(84, 56, 24, ${0.06 + rand() * 0.07})`);
+        stain.addColorStop(1, "rgba(84, 56, 24, 0)");
+        ctx.fillStyle = stain;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // Fold creases running across the sheet.
+    ctx.lineCap = "round";
+    for (let i = 0; i < 16; i++) {
+      const x = rand() * TILE;
+      const y = rand() * TILE;
+      const angle = rand() * Math.PI;
+      const length = 60 + rand() * 220;
+      ctx.strokeStyle = `rgba(74, 48, 20, ${0.04 + rand() * 0.05})`;
+      ctx.lineWidth = 0.8 + rand() * 1.8;
+      stampTiled(x, y, (sx, sy) => {
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + Math.cos(angle) * length, sy + Math.sin(angle) * length);
+        ctx.stroke();
+      });
+    }
+  });
+  parchmentTexture.repeat.setScalar(1 / TILE_UNITS);
+
+  const seaTexture = washTexture((ctx) => {
+    const rand = seededRandom(70260728);
+
+    // Uneven wash of the water color.
+    for (let i = 0; i < 34; i++) {
+      const x = rand() * TILE;
+      const y = rand() * TILE;
+      const radius = 40 + rand() * 120;
+      stampTiled(x, y, (sx, sy) => {
+        const wash = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius);
+        wash.addColorStop(0, `rgba(24, 52, 78, ${0.05 + rand() * 0.06})`);
+        wash.addColorStop(1, "rgba(24, 52, 78, 0)");
+        ctx.fillStyle = wash;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // Hand-drawn swell lines, the double-arc glyph of an old chart.
+    ctx.lineCap = "round";
+    for (let i = 0; i < 26; i++) {
+      const x = rand() * TILE;
+      const y = rand() * TILE;
+      const width = 26 + rand() * 22;
+      ctx.strokeStyle = `rgba(18, 44, 68, ${0.16 + rand() * 0.12})`;
+      ctx.lineWidth = 1.6 + rand();
+      stampTiled(x, y, (sx, sy) => {
+        for (let row = 0; row < 2; row++) {
+          const oy = sy + row * 9;
+          const ox = sx + row * 5;
+          ctx.beginPath();
+          ctx.moveTo(ox, oy);
+          ctx.quadraticCurveTo(ox + width / 4, oy - 7, ox + width / 2, oy);
+          ctx.quadraticCurveTo(ox + (width * 3) / 4, oy + 7, ox + width, oy);
+          ctx.stroke();
+        }
+      });
+    }
+  });
+  seaTexture.repeat.set(
+    (plane.width * 1.2) / TILE_UNITS,
+    plane.height / TILE_UNITS,
+  );
+
   // Close in, the era raster is magnified far past its pixel resolution, so the
   // scene crossfades to vector countries built from the same topojson the SVG
   // map uses. Those stay crisp at any zoom.
@@ -207,32 +351,32 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
 
   const AGE_STYLES: Record<string, AgeStyle> = {
     "Ancient History": {
-      sea: "#7aa6bd",
-      land: "#d3bb8c",
-      palette: ["#d3bb8c"],
-      coast: "#4a3a20",
+      sea: "#6b8ea1",
+      land: "#c7ac7e",
+      palette: ["#c7ac7e"],
+      coast: "#3d2c15",
       borders: false,
     },
     "Post-Classical / Medieval Period": {
-      sea: "#5f93b2",
-      land: "#cdb185",
-      palette: ["#cdb185"],
-      coast: "#43301a",
+      sea: "#5b849c",
+      land: "#c2a577",
+      palette: ["#c2a577"],
+      coast: "#35240f",
       borders: false,
     },
     // By the early modern age, charted nations are the point of the map, so the
     // per-country tints of the SVG map come back.
     "Early Modern Period": {
-      sea: "#4f86b6",
-      land: "#c9b083",
+      sea: "#527f9c",
+      land: "#c2a678",
       palette: [
-        "#c9b083", // parchment tan
-        "#c3a878", // deeper tan
-        "#cdb78e", // pale wheat
-        "#bfa878", // olive tan
-        "#c7ad7d", // aged straw
+        "#c2a678", // parchment tan
+        "#bb9f6f", // deeper tan
+        "#c8ad83", // pale wheat
+        "#b6a070", // olive tan
+        "#c0a574", // aged straw
       ],
-      coast: "#3a2414",
+      coast: "#33220f",
       borders: true,
     },
   };
@@ -296,27 +440,44 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     return shape;
   };
 
+  // A small positional wobble on the inked outlines only — the fills stay put,
+  // so the ink sits a hair off the color the way a hand-drawn chart does.
+  const INK_WOBBLE = 0.014;
+  const fract = (n: number) => n - Math.floor(n);
+  const inkJitter = (x: number, y: number): Position => [
+    x + (fract(Math.sin(x * 91.7 + y * 47.3) * 43758.5453) - 0.5) * INK_WOBBLE,
+    y + (fract(Math.sin(x * 27.1 - y * 63.9) * 24634.6345) - 0.5) * INK_WOBBLE,
+  ];
+
   const pushRingSegments = (target: number[], ring: Position[]) => {
     for (let i = 0; i < ring.length; i++) {
-      const [x1, y1] = ring[i];
-      const [x2, y2] = ring[(i + 1) % ring.length];
+      const [x1, y1] = inkJitter(...ring[i]);
+      const [x2, y2] = inkJitter(...ring[(i + 1) % ring.length]);
       target.push(x1, y1, 0, x2, y2, 0);
     }
   };
 
-  const lineSegmentsFrom = (points: number[], color: string, y: number) => {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(points, 3),
-    );
-    const material = new THREE.LineBasicMaterial({
+  // Ink is drawn with fat lines (LineMaterial) rather than WebGL's 1px default,
+  // so coastlines carry the weight of a pen stroke at any zoom.
+  const lineMaterials: LineMaterial[] = [];
+
+  const lineSegmentsFrom = (
+    points: number[],
+    color: string,
+    y: number,
+    lineWidth: number,
+  ) => {
+    const geometry = new LineSegmentsGeometry();
+    geometry.setPositions(points);
+    const material = new LineMaterial({
       color,
+      linewidth: lineWidth, // in screen pixels
       transparent: true,
       opacity: 0,
       depthWrite: false,
     });
-    const lines = new THREE.LineSegments(geometry, material);
+    lineMaterials.push(material);
+    const lines = new LineSegments2(geometry, material);
     lines.rotation.x = -Math.PI / 2; // lie flat, north toward -Z
     lines.position.y = y;
     scene.add(lines);
@@ -359,6 +520,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
 
   const landMaterial = new THREE.MeshBasicMaterial({
     vertexColors: true,
+    map: parchmentTexture,
     transparent: true,
     opacity: 0,
     depthWrite: false,
@@ -385,6 +547,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     borderPoints,
     "#3a2414",
     0.008,
+    1.4,
   );
 
   // Silhouette layer for the ages before nation states: topojson `merge`
@@ -409,6 +572,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   }
 
   const silhouetteMaterial = new THREE.MeshBasicMaterial({
+    map: parchmentTexture,
     transparent: true,
     opacity: 0,
     depthWrite: false,
@@ -425,12 +589,14 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     coastPoints,
     "#3a2414",
     0.006,
+    2.8,
   );
 
   // The sea runs wider than the raster so the rings that unwrap past ±180°
   // still sit on water rather than floating over the background.
   const seaMaterial = new THREE.MeshBasicMaterial({
     color: "#4f86b6",
+    map: seaTexture,
     transparent: true,
     opacity: 0,
   });
@@ -758,6 +924,8 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    // Fat lines size themselves in pixels, so they need the viewport.
+    lineMaterials.forEach((material) => material.resolution.set(w, h));
   }
   window.addEventListener("resize", resize);
   resize();
