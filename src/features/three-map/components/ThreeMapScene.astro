@@ -1,0 +1,540 @@
+---
+import ancientAgeMap from "../../../assets/ancient-age.webp";
+import medievalAgeMap from "../../../assets/medieval-age.webp";
+import modernAgeMap from "../../../assets/modern-age.webp";
+import defaultEvents from "../../world-map/data/events.json";
+
+// Each event's `age` picks the era-appropriate map raster, same as the SVG map.
+const AGE_MAPS: Record<string, string> = {
+  "Ancient History": ancientAgeMap.src,
+  "Post-Classical / Medieval Period": medievalAgeMap.src,
+  "Early Modern Period": modernAgeMap.src,
+};
+const mapForAge = (age: string): string => AGE_MAPS[age] ?? modernAgeMap.src;
+
+interface HistoryEvent {
+  year: number;
+  text: string;
+  lat: number;
+  lng: number;
+  characters: string[];
+  age: string;
+}
+
+interface Props {
+  events?: HistoryEvent[];
+}
+
+const { events = defaultEvents } = Astro.props;
+
+// The map plane is an equirectangular sheet laid on the ground: 360° of
+// longitude across X, 180° of latitude across Z, at 1 unit per 10 degrees.
+const PLANE_W = 36;
+const PLANE_H = 18;
+const UNITS_PER_DEGREE = PLANE_W / 360;
+
+// Longitude runs along +X. The plane is rotated -90° about X, which sends its
+// local +Y (the top of the texture, i.e. the north pole) to world -Z, so
+// latitude is negated to place events correctly.
+const project = (lng: number, lat: number) => ({
+  x: lng * UNITS_PER_DEGREE,
+  z: -lat * UNITS_PER_DEGREE,
+});
+
+const timeline = events.map((event) => ({
+  year: event.year,
+  text: event.text,
+  characters: event.characters,
+  mapSrc: mapForAge(event.age),
+  ...project(event.lng, event.lat),
+}));
+
+const initialMapSrc = mapForAge(events[0]?.age ?? "");
+---
+
+<div
+  id="three-root"
+  data-map-src={initialMapSrc}
+  data-timeline={JSON.stringify(timeline)}
+  data-plane={JSON.stringify({
+    width: PLANE_W,
+    height: PLANE_H,
+    unitsPerDegree: UNITS_PER_DEGREE,
+  })}
+  class="relative h-screen w-screen overflow-hidden bg-[#1c1109]"
+>
+  <canvas id="three-canvas" class="block h-full w-full"></canvas>
+
+  <a
+    href="/"
+    class="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-4 py-2 font-serif text-sm font-bold text-[#c9a13b] transition-colors hover:bg-[#4a2c14]"
+  >
+    ← Main page
+  </a>
+
+  <div
+    id="event-card"
+    class="pointer-events-none absolute inset-x-0 top-6 mx-auto w-fit max-w-[85%] rounded-lg border-2 border-[#9c7a24] bg-[#2a1608]/90 px-6 py-3 text-center opacity-0 transition-opacity duration-500 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
+  >
+    <p id="event-year" class="font-serif text-2xl font-bold text-[#c9a13b]"></p>
+    <p id="event-text" class="font-serif text-base text-[#e8d9b5]"></p>
+    <p id="event-characters" class="font-serif text-sm text-[#c9a13b]/80"></p>
+  </div>
+
+  <p
+    class="pointer-events-none fixed inset-x-0 bottom-4 z-20 text-center font-serif text-sm text-[#c9a13b]/80 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
+  >
+    Drag to orbit · scroll to zoom
+  </p>
+</div>
+
+<script>
+  // Plain (hoisted) script so Vite bundles the bare `three` imports; runtime
+  // data arrives via the root's data-* attributes (define:vars would inline it).
+  import * as THREE from "three";
+  import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+  import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+  import { feature } from "topojson-client";
+  import type { GeometryCollection, Topology } from "topojson-specification";
+  import countries110m from "world-atlas/countries-110m.json";
+
+  interface TimelineEntry {
+    year: number;
+    text: string;
+    characters: string[];
+    mapSrc: string;
+    x: number;
+    z: number;
+  }
+
+  const root = document.getElementById("three-root") as HTMLElement;
+  const canvas = document.getElementById("three-canvas") as HTMLCanvasElement;
+  const timeline: TimelineEntry[] = JSON.parse(root.dataset.timeline!);
+  const plane: { width: number; height: number; unitsPerDegree: number } =
+    JSON.parse(root.dataset.plane!);
+  const UNITS_PER_DEGREE = plane.unitsPerDegree;
+  const initialMapSrc = root.dataset.mapSrc!;
+
+  const yearEl = document.getElementById("event-year") as HTMLElement;
+  const textEl = document.getElementById("event-text") as HTMLElement;
+  const charactersEl = document.getElementById(
+    "event-characters",
+  ) as HTMLElement;
+  const card = document.getElementById("event-card") as HTMLElement;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#1c1109");
+
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 400);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI / 2 - 0.05; // stay above the map plane
+
+  scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+  const key = new THREE.DirectionalLight(0xffe9c9, 1.1);
+  key.position.set(6, 14, 7);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x9ac0e0, 0.35);
+  rim.position.set(-8, 6, -6);
+  scene.add(rim);
+
+  // The map: the era raster textured onto a flat plane laid on the ground.
+  const mapMaterial = new THREE.MeshStandardMaterial({
+    color: "#ffffff",
+    roughness: 1,
+    transparent: true,
+  });
+  const mapMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(plane.width, plane.height),
+    mapMaterial,
+  );
+  mapMesh.rotation.x = -Math.PI / 2; // lie flat
+  scene.add(mapMesh);
+
+  // Era rasters are swapped in as the tour moves between ages; each one is
+  // fetched once and reused.
+  const textureLoader = new THREE.TextureLoader();
+  const textureCache = new Map<string, THREE.Texture>();
+  let currentMapSrc: string | null = null;
+
+  function setMapTexture(src: string) {
+    if (src === currentMapSrc) return;
+    currentMapSrc = src;
+    const cached = textureCache.get(src);
+    if (cached) {
+      mapMaterial.map = cached;
+      mapMaterial.needsUpdate = true;
+      return;
+    }
+    textureLoader.load(src, (texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      textureCache.set(src, texture);
+      if (currentMapSrc !== src) return; // a later event already moved on
+      mapMaterial.map = texture;
+      mapMaterial.needsUpdate = true;
+    });
+  }
+  setMapTexture(initialMapSrc);
+
+  // Close in, the era raster is magnified far past its pixel resolution, so the
+  // scene crossfades to vector countries built from the same topojson the SVG
+  // map uses. Those stay crisp at any zoom.
+  const SEA_COLOR = "#4f86b6";
+  const COAST_COLOR = "#3a2414";
+
+  // The same tight parchment range as the SVG map: subtle per-country variation
+  // rather than a rainbow, picked by a stable per-name hash.
+  const COUNTRY_PALETTE = [
+    "#c9b083", // parchment tan
+    "#c3a878", // deeper tan
+    "#cdb78e", // pale wheat
+    "#bfa878", // olive tan
+    "#c7ad7d", // aged straw
+  ];
+
+  const hashSeed = (str: string): number => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    }
+    return hash || 1;
+  };
+
+  const colorForCountry = (name: string): THREE.Color =>
+    new THREE.Color(COUNTRY_PALETTE[hashSeed(name) % COUNTRY_PALETTE.length]);
+
+  type Position = [number, number];
+  type PolygonGeometry = { type: "Polygon"; coordinates: Position[][] };
+  type MultiPolygonGeometry = {
+    type: "MultiPolygon";
+    coordinates: Position[][][];
+  };
+  type CountryGeometry = PolygonGeometry | MultiPolygonGeometry;
+
+  // Unwrap longitude relative to the previous point so rings crossing the
+  // antimeridian (Russia, Fiji) run off the edge of the sheet instead of
+  // streaking straight back across it.
+  const unwrapRing = (ring: Position[]): Position[] => {
+    let previousLng = ring[0][0];
+    return ring.map(([lng, lat], i) => {
+      let unwrapped = lng;
+      if (i > 0) {
+        while (unwrapped - previousLng > 180) unwrapped -= 360;
+        while (unwrapped - previousLng < -180) unwrapped += 360;
+      }
+      previousLng = unwrapped;
+      return [unwrapped * UNITS_PER_DEGREE, lat * UNITS_PER_DEGREE] as Position;
+    });
+  };
+
+  const topology = countries110m as unknown as Topology;
+  const countryFeatures = (
+    feature(
+      topology,
+      topology.objects.countries as GeometryCollection,
+    ) as unknown as {
+      features: { properties: { name: string }; geometry: CountryGeometry }[];
+    }
+  ).features;
+
+  // One merged land mesh (per-country tint carried in vertex colors) plus one
+  // merged coastline buffer, so the whole vector layer costs two draw calls.
+  const landParts: THREE.BufferGeometry[] = [];
+  const coastPoints: number[] = [];
+
+  for (const country of countryFeatures) {
+    const color = colorForCountry(country.properties.name);
+    const polygons =
+      country.geometry.type === "Polygon"
+        ? [country.geometry.coordinates]
+        : country.geometry.coordinates;
+
+    for (const polygon of polygons) {
+      const rings = polygon.map(unwrapRing);
+      const [outer, ...holes] = rings;
+      if (outer.length < 3) continue;
+
+      const shape = new THREE.Shape(
+        outer.map(([x, y]) => new THREE.Vector2(x, y)),
+      );
+      shape.holes = holes
+        .filter((hole) => hole.length >= 3)
+        .map((hole) => new THREE.Path(hole.map(([x, y]) => new THREE.Vector2(x, y))));
+
+      const geometry = new THREE.ShapeGeometry(shape);
+      const vertexCount = geometry.attributes.position.count;
+      const colors = new Float32Array(vertexCount * 3);
+      for (let i = 0; i < vertexCount; i++) {
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+      }
+      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      landParts.push(geometry);
+
+      // Coastlines as closed line loops, flattened into segment pairs.
+      for (const ring of rings) {
+        for (let i = 0; i < ring.length; i++) {
+          const [x1, y1] = ring[i];
+          const [x2, y2] = ring[(i + 1) % ring.length];
+          coastPoints.push(x1, y1, 0, x2, y2, 0);
+        }
+      }
+    }
+  }
+
+  const landMaterial = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const landMesh = new THREE.Mesh(mergeGeometries(landParts), landMaterial);
+  landMesh.rotation.x = -Math.PI / 2; // lie flat, north toward -Z
+  landMesh.position.y = 0.004;
+  scene.add(landMesh);
+
+  const coastGeometry = new THREE.BufferGeometry();
+  coastGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(coastPoints, 3),
+  );
+  const coastMaterial = new THREE.LineBasicMaterial({
+    color: COAST_COLOR,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const coastLines = new THREE.LineSegments(coastGeometry, coastMaterial);
+  coastLines.rotation.x = -Math.PI / 2;
+  coastLines.position.y = 0.006;
+  scene.add(coastLines);
+
+  // The sea runs wider than the raster so the rings that unwrap past ±180°
+  // still sit on water rather than floating over the background.
+  const seaMaterial = new THREE.MeshBasicMaterial({
+    color: SEA_COLOR,
+    transparent: true,
+    opacity: 0,
+  });
+  const seaMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(plane.width * 1.2, plane.height),
+    seaMaterial,
+  );
+  seaMesh.rotation.x = -Math.PI / 2;
+  seaMesh.position.y = 0.002;
+  scene.add(seaMesh);
+
+  // Crossfade window, measured as camera distance to whatever it is orbiting:
+  // full antique raster far out, full vector by the time an event is framed.
+  const VECTOR_FADE_START = 11;
+  const VECTOR_FADE_END = 5;
+
+  function updateCrossfade() {
+    const distance = camera.position.distanceTo(controls.target);
+    const t = THREE.MathUtils.clamp(
+      (VECTOR_FADE_START - distance) / (VECTOR_FADE_START - VECTOR_FADE_END),
+      0,
+      1,
+    );
+    mapMaterial.opacity = 1 - t;
+    mapMesh.visible = t < 1;
+    seaMaterial.opacity = t;
+    landMaterial.opacity = t * 0.92;
+    coastMaterial.opacity = t * 0.8;
+    seaMesh.visible = t > 0;
+    landMesh.visible = t > 0;
+    coastLines.visible = t > 0;
+  }
+
+  // A gold beacon stands at every event's projected lat/lng; the active one
+  // pulses along with a ring on the ground.
+  const markerGeometry = new THREE.ConeGeometry(0.08, 0.34, 16);
+  const markerMaterial = new THREE.MeshStandardMaterial({
+    color: "#c9a13b",
+    emissive: "#c9a13b",
+    emissiveIntensity: 0.6,
+    roughness: 0.4,
+  });
+  const markers = timeline.map((entry: TimelineEntry) => {
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial.clone());
+    marker.position.set(entry.x, 0.17, entry.z);
+    scene.add(marker);
+    return marker;
+  });
+
+  const pulseRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.16, 0.22, 32),
+    new THREE.MeshBasicMaterial({
+      color: "#dc2626",
+      transparent: true,
+      side: THREE.DoubleSide,
+    }),
+  );
+  pulseRing.rotation.x = -Math.PI / 2;
+  pulseRing.position.y = 0.03; // above the vector sea/land/coast layers
+  pulseRing.visible = false;
+  scene.add(pulseRing);
+
+  // Camera framing: an overview of the whole sheet, and the close-in view the
+  // camera settles into over each event location.
+  const OVERVIEW_TARGET = new THREE.Vector3(0, 0, 0);
+  const OVERVIEW_POSITION = new THREE.Vector3(0, 22, 15);
+  const FOCUS_DISTANCE = 2.9;
+  const MIN_FOCUS_POLAR = 0.35;
+  const MAX_FOCUS_POLAR = 1;
+
+  const TRAVEL_MS = 2600;
+  const DWELL_MS = 2200;
+  const START_DELAY_MS = 1000;
+
+  const easeInOutCubic = (t: number) =>
+    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+  camera.position.copy(OVERVIEW_POSITION);
+  controls.target.copy(OVERVIEW_TARGET);
+
+  // Keep whatever azimuth the user has orbited to, but pull the camera in to
+  // the focus distance and a readable tilt for the flight's destination.
+  const spherical = new THREE.Spherical();
+  function focusOffset() {
+    spherical.setFromVector3(camera.position.clone().sub(controls.target));
+    spherical.radius = FOCUS_DISTANCE;
+    spherical.phi = THREE.MathUtils.clamp(
+      spherical.phi,
+      MIN_FOCUS_POLAR,
+      MAX_FOCUS_POLAR,
+    );
+    return new THREE.Vector3().setFromSpherical(spherical);
+  }
+
+  interface Flight {
+    fromPosition: THREE.Vector3;
+    fromTarget: THREE.Vector3;
+    toPosition: THREE.Vector3;
+    toTarget: THREE.Vector3;
+    startedAt: number;
+    onArrive?: () => void;
+  }
+
+  let flight: Flight | null = null;
+  let dwellUntil = 0;
+  let activeIndex = -1;
+  let autoplay = true;
+  let startTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function flyTo(
+    targetPoint: THREE.Vector3,
+    offset: THREE.Vector3,
+    onArrive?: () => void,
+  ) {
+    flight = {
+      fromPosition: camera.position.clone(),
+      fromTarget: controls.target.clone(),
+      toPosition: targetPoint.clone().add(offset),
+      toTarget: targetPoint.clone(),
+      startedAt: performance.now(),
+      onArrive,
+    };
+  }
+
+  function showEvent(index: number, { chain = false } = {}) {
+    const entry = timeline[index];
+    if (!entry) return;
+
+    activeIndex = index;
+    yearEl.textContent = String(entry.year);
+    textEl.textContent = entry.text;
+    charactersEl.textContent = entry.characters.join(" · ");
+    card.classList.remove("opacity-0");
+    setMapTexture(entry.mapSrc);
+
+    pulseRing.position.set(entry.x, 0.03, entry.z);
+    pulseRing.visible = true;
+
+    const destination = new THREE.Vector3(entry.x, 0, entry.z);
+    flyTo(destination, focusOffset(), () => {
+      if (!chain || !autoplay) return;
+      dwellUntil = performance.now() + DWELL_MS;
+    });
+  }
+
+  function finishTour() {
+    activeIndex = -1;
+    pulseRing.visible = false;
+    flyTo(
+      OVERVIEW_TARGET,
+      OVERVIEW_POSITION.clone().sub(OVERVIEW_TARGET),
+      () => {
+        card.classList.add("opacity-0");
+      },
+    );
+  }
+
+  // The event bar (or any host page) can steer the tour to a single event.
+  window.addEventListener("map:select-event", (event) => {
+    autoplay = false;
+    dwellUntil = 0;
+    if (startTimeout) clearTimeout(startTimeout);
+    showEvent((event as CustomEvent<{ index: number }>).detail.index);
+  });
+
+  startTimeout = setTimeout(
+    () => showEvent(0, { chain: true }),
+    START_DELAY_MS,
+  );
+
+  function resize() {
+    const w = root.clientWidth;
+    const h = root.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  renderer.setAnimationLoop((now) => {
+    if (flight) {
+      const t = Math.min((now - flight.startedAt) / TRAVEL_MS, 1);
+      const eased = easeInOutCubic(t);
+      camera.position.lerpVectors(flight.fromPosition, flight.toPosition, eased);
+      controls.target.lerpVectors(flight.fromTarget, flight.toTarget, eased);
+      if (t >= 1) {
+        const { onArrive } = flight;
+        flight = null;
+        onArrive?.();
+      }
+    } else if (dwellUntil && now >= dwellUntil) {
+      // Dwell over: on to the next event, or back out to the world view.
+      dwellUntil = 0;
+      if (activeIndex < timeline.length - 1) {
+        showEvent(activeIndex + 1, { chain: true });
+      } else {
+        finishTour();
+      }
+    }
+
+    // Pulse the active beacon and its ground ring.
+    markers.forEach((marker: THREE.Mesh<THREE.ConeGeometry, THREE.MeshStandardMaterial>, i: number) => {
+      const isActive = i === activeIndex;
+      marker.scale.setScalar(isActive ? 1 + 0.2 * Math.sin(now * 0.006) : 1);
+      marker.material.emissiveIntensity = isActive ? 1 : 0.5;
+    });
+    if (pulseRing.visible) {
+      const pulse = (now % 1600) / 1600;
+      pulseRing.scale.setScalar(1 + pulse * 1.6);
+      pulseRing.material.opacity = 0.7 * (1 - pulse);
+    }
+
+    controls.update();
+    updateCrossfade();
+    renderer.render(scene, camera);
+  });
+</script>
