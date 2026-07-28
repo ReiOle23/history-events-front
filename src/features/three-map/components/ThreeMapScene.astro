@@ -2,6 +2,8 @@
 import ancientAgeMap from "../../../assets/ancient-age.webp";
 import medievalAgeMap from "../../../assets/medieval-age.webp";
 import modernAgeMap from "../../../assets/modern-age.webp";
+import generalExample from "../../../assets/generalExample.webp";
+import EventBar from "../../world-map/components/EventBar.astro";
 import defaultEvents from "../../world-map/data/events.json";
 
 // Each event's `age` picks the era-appropriate map raster, same as the SVG map.
@@ -45,6 +47,7 @@ const timeline = events.map((event) => ({
   year: event.year,
   text: event.text,
   characters: event.characters,
+  age: event.age,
   mapSrc: mapForAge(event.age),
   ...project(event.lng, event.lat),
 }));
@@ -55,6 +58,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
 <div
   id="three-root"
   data-map-src={initialMapSrc}
+  data-character-src={generalExample.src}
   data-timeline={JSON.stringify(timeline)}
   data-plane={JSON.stringify({
     width: PLANE_W,
@@ -82,10 +86,12 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   </div>
 
   <p
-    class="pointer-events-none fixed inset-x-0 bottom-4 z-20 text-center font-serif text-sm text-[#c9a13b]/80 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
+    class="pointer-events-none fixed right-4 top-4 z-20 font-serif text-sm text-[#c9a13b]/80 [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
   >
     Drag to orbit · scroll to zoom
   </p>
+
+  <EventBar events={events} />
 </div>
 
 <script>
@@ -94,7 +100,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   import * as THREE from "three";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-  import { feature } from "topojson-client";
+  import { feature, merge } from "topojson-client";
   import type { GeometryCollection, Topology } from "topojson-specification";
   import countries110m from "world-atlas/countries-110m.json";
 
@@ -102,6 +108,7 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     year: number;
     text: string;
     characters: string[];
+    age: string;
     mapSrc: string;
     x: number;
     z: number;
@@ -185,18 +192,53 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   // Close in, the era raster is magnified far past its pixel resolution, so the
   // scene crossfades to vector countries built from the same topojson the SVG
   // map uses. Those stay crisp at any zoom.
-  const SEA_COLOR = "#4f86b6";
-  const COAST_COLOR = "#3a2414";
+  //
+  // The vector sheet is also dressed for the era of the current event. Modern
+  // national borders would be an anachronism on an ancient or medieval map, so
+  // those ages show a dissolved landmass silhouette instead, in their own
+  // parchment and sea tones.
+  interface AgeStyle {
+    sea: string;
+    land: string; // silhouette tone for the ages that draw no borders
+    palette: string[]; // per-country tints, only used when borders are drawn
+    coast: string;
+    borders: boolean;
+  }
 
-  // The same tight parchment range as the SVG map: subtle per-country variation
-  // rather than a rainbow, picked by a stable per-name hash.
-  const COUNTRY_PALETTE = [
-    "#c9b083", // parchment tan
-    "#c3a878", // deeper tan
-    "#cdb78e", // pale wheat
-    "#bfa878", // olive tan
-    "#c7ad7d", // aged straw
-  ];
+  const AGE_STYLES: Record<string, AgeStyle> = {
+    "Ancient History": {
+      sea: "#7aa6bd",
+      land: "#d3bb8c",
+      palette: ["#d3bb8c"],
+      coast: "#4a3a20",
+      borders: false,
+    },
+    "Post-Classical / Medieval Period": {
+      sea: "#5f93b2",
+      land: "#cdb185",
+      palette: ["#cdb185"],
+      coast: "#43301a",
+      borders: false,
+    },
+    // By the early modern age, charted nations are the point of the map, so the
+    // per-country tints of the SVG map come back.
+    "Early Modern Period": {
+      sea: "#4f86b6",
+      land: "#c9b083",
+      palette: [
+        "#c9b083", // parchment tan
+        "#c3a878", // deeper tan
+        "#cdb78e", // pale wheat
+        "#bfa878", // olive tan
+        "#c7ad7d", // aged straw
+      ],
+      coast: "#3a2414",
+      borders: true,
+    },
+  };
+  const FALLBACK_AGE = "Early Modern Period";
+  const styleForAge = (age: string): AgeStyle =>
+    AGE_STYLES[age] ?? AGE_STYLES[FALLBACK_AGE];
 
   const hashSeed = (str: string): number => {
     let hash = 0;
@@ -205,9 +247,6 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     }
     return hash || 1;
   };
-
-  const colorForCountry = (name: string): THREE.Color =>
-    new THREE.Color(COUNTRY_PALETTE[hashSeed(name) % COUNTRY_PALETTE.length]);
 
   type Position = [number, number];
   type PolygonGeometry = { type: "Polygon"; coordinates: Position[][] };
@@ -243,13 +282,57 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     }
   ).features;
 
-  // One merged land mesh (per-country tint carried in vertex colors) plus one
-  // merged coastline buffer, so the whole vector layer costs two draw calls.
+  const shapeFromRings = (rings: Position[][]): THREE.Shape | null => {
+    const [outer, ...holes] = rings;
+    if (!outer || outer.length < 3) return null;
+    const shape = new THREE.Shape(
+      outer.map(([x, y]) => new THREE.Vector2(x, y)),
+    );
+    shape.holes = holes
+      .filter((hole) => hole.length >= 3)
+      .map(
+        (hole) => new THREE.Path(hole.map(([x, y]) => new THREE.Vector2(x, y))),
+      );
+    return shape;
+  };
+
+  const pushRingSegments = (target: number[], ring: Position[]) => {
+    for (let i = 0; i < ring.length; i++) {
+      const [x1, y1] = ring[i];
+      const [x2, y2] = ring[(i + 1) % ring.length];
+      target.push(x1, y1, 0, x2, y2, 0);
+    }
+  };
+
+  const lineSegmentsFrom = (points: number[], color: string, y: number) => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(points, 3),
+    );
+    const material = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    const lines = new THREE.LineSegments(geometry, material);
+    lines.rotation.x = -Math.PI / 2; // lie flat, north toward -Z
+    lines.position.y = y;
+    scene.add(lines);
+    return { lines, material };
+  };
+
+  // Country layer: one merged mesh whose per-country tint rides in vertex
+  // colors, so a palette change is a buffer rewrite rather than 177 materials.
+  // `countryRanges` records which slice of that buffer belongs to which country.
   const landParts: THREE.BufferGeometry[] = [];
-  const coastPoints: number[] = [];
+  const countryRanges: { start: number; count: number; hash: number }[] = [];
+  const borderPoints: number[] = [];
+  let vertexCursor = 0;
 
   for (const country of countryFeatures) {
-    const color = colorForCountry(country.properties.name);
+    const hash = hashSeed(country.properties.name);
     const polygons =
       country.geometry.type === "Polygon"
         ? [country.geometry.coordinates]
@@ -257,35 +340,20 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
 
     for (const polygon of polygons) {
       const rings = polygon.map(unwrapRing);
-      const [outer, ...holes] = rings;
-      if (outer.length < 3) continue;
-
-      const shape = new THREE.Shape(
-        outer.map(([x, y]) => new THREE.Vector2(x, y)),
-      );
-      shape.holes = holes
-        .filter((hole) => hole.length >= 3)
-        .map((hole) => new THREE.Path(hole.map(([x, y]) => new THREE.Vector2(x, y))));
+      const shape = shapeFromRings(rings);
+      if (!shape) continue;
 
       const geometry = new THREE.ShapeGeometry(shape);
       const vertexCount = geometry.attributes.position.count;
-      const colors = new Float32Array(vertexCount * 3);
-      for (let i = 0; i < vertexCount; i++) {
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
-      }
-      geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geometry.setAttribute(
+        "color",
+        new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3),
+      );
       landParts.push(geometry);
+      countryRanges.push({ start: vertexCursor, count: vertexCount, hash });
+      vertexCursor += vertexCount;
 
-      // Coastlines as closed line loops, flattened into segment pairs.
-      for (const ring of rings) {
-        for (let i = 0; i < ring.length; i++) {
-          const [x1, y1] = ring[i];
-          const [x2, y2] = ring[(i + 1) % ring.length];
-          coastPoints.push(x1, y1, 0, x2, y2, 0);
-        }
-      }
+      rings.forEach((ring) => pushRingSegments(borderPoints, ring));
     }
   }
 
@@ -300,26 +368,69 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   landMesh.position.y = 0.004;
   scene.add(landMesh);
 
-  const coastGeometry = new THREE.BufferGeometry();
-  coastGeometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(coastPoints, 3),
+  const landColors = landMesh.geometry.attributes.color as THREE.BufferAttribute;
+  const paletteColor = new THREE.Color();
+
+  function paintCountries(palette: string[]) {
+    for (const range of countryRanges) {
+      paletteColor.set(palette[range.hash % palette.length]);
+      for (let i = range.start; i < range.start + range.count; i++) {
+        landColors.setXYZ(i, paletteColor.r, paletteColor.g, paletteColor.b);
+      }
+    }
+    landColors.needsUpdate = true;
+  }
+
+  const { lines: borderLines, material: borderMaterial } = lineSegmentsFrom(
+    borderPoints,
+    "#3a2414",
+    0.008,
   );
-  const coastMaterial = new THREE.LineBasicMaterial({
-    color: COAST_COLOR,
+
+  // Silhouette layer for the ages before nation states: topojson `merge`
+  // dissolves the shared arcs, leaving continents with coastlines but no
+  // internal borders at all.
+  const silhouette = merge(
+    topology,
+    (topology.objects.countries as GeometryCollection).geometries as Parameters<
+      typeof merge
+    >[1],
+  ) as unknown as MultiPolygonGeometry;
+
+  const silhouetteParts: THREE.BufferGeometry[] = [];
+  const coastPoints: number[] = [];
+
+  for (const polygon of silhouette.coordinates) {
+    const rings = polygon.map(unwrapRing);
+    const shape = shapeFromRings(rings);
+    if (!shape) continue;
+    silhouetteParts.push(new THREE.ShapeGeometry(shape));
+    rings.forEach((ring) => pushRingSegments(coastPoints, ring));
+  }
+
+  const silhouetteMaterial = new THREE.MeshBasicMaterial({
     transparent: true,
     opacity: 0,
     depthWrite: false,
   });
-  const coastLines = new THREE.LineSegments(coastGeometry, coastMaterial);
-  coastLines.rotation.x = -Math.PI / 2;
-  coastLines.position.y = 0.006;
-  scene.add(coastLines);
+  const silhouetteMesh = new THREE.Mesh(
+    mergeGeometries(silhouetteParts),
+    silhouetteMaterial,
+  );
+  silhouetteMesh.rotation.x = -Math.PI / 2;
+  silhouetteMesh.position.y = 0.004;
+  scene.add(silhouetteMesh);
+
+  const { lines: coastLines, material: coastMaterial } = lineSegmentsFrom(
+    coastPoints,
+    "#3a2414",
+    0.006,
+  );
 
   // The sea runs wider than the raster so the rings that unwrap past ±180°
   // still sit on water rather than floating over the background.
   const seaMaterial = new THREE.MeshBasicMaterial({
-    color: SEA_COLOR,
+    color: "#4f86b6",
     transparent: true,
     opacity: 0,
   });
@@ -331,12 +442,41 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
   seaMesh.position.y = 0.002;
   scene.add(seaMesh);
 
+  // Era dressing. Palettes are repainted at once (the country layer is hidden
+  // in the ages that use silhouettes anyway); sea, coast and silhouette tones
+  // ease across so an age change during the tour doesn't snap.
+  const seaTarget = new THREE.Color();
+  const coastTarget = new THREE.Color();
+  const silhouetteTarget = new THREE.Color();
+  let drawBorders = true;
+
+  function applyAgeStyle(age: string) {
+    const style = styleForAge(age);
+    seaTarget.set(style.sea);
+    coastTarget.set(style.coast);
+    silhouetteTarget.set(style.land);
+    drawBorders = style.borders;
+    borderMaterial.color.set(style.coast);
+    paintCountries(style.palette);
+  }
+
+  const initialStyle = styleForAge(timeline[0]?.age ?? FALLBACK_AGE);
+  applyAgeStyle(timeline[0]?.age ?? FALLBACK_AGE);
+  seaMaterial.color.set(initialStyle.sea);
+  coastMaterial.color.set(initialStyle.coast);
+  silhouetteMaterial.color.set(initialStyle.land);
+
   // Crossfade window, measured as camera distance to whatever it is orbiting:
   // full antique raster far out, full vector by the time an event is framed.
   const VECTOR_FADE_START = 11;
   const VECTOR_FADE_END = 5;
+  const COLOR_EASE = 0.06;
 
-  function updateCrossfade() {
+  function updateVectorLayer() {
+    seaMaterial.color.lerp(seaTarget, COLOR_EASE);
+    coastMaterial.color.lerp(coastTarget, COLOR_EASE);
+    silhouetteMaterial.color.lerp(silhouetteTarget, COLOR_EASE);
+
     const distance = camera.position.distanceTo(controls.target);
     const t = THREE.MathUtils.clamp(
       (VECTOR_FADE_START - distance) / (VECTOR_FADE_START - VECTOR_FADE_END),
@@ -345,42 +485,135 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     );
     mapMaterial.opacity = 1 - t;
     mapMesh.visible = t < 1;
+
     seaMaterial.opacity = t;
     landMaterial.opacity = t * 0.92;
+    silhouetteMaterial.opacity = t * 0.92;
     coastMaterial.opacity = t * 0.8;
+    borderMaterial.opacity = t * 0.55;
+
     seaMesh.visible = t > 0;
-    landMesh.visible = t > 0;
     coastLines.visible = t > 0;
+    landMesh.visible = t > 0 && drawBorders;
+    borderLines.visible = t > 0 && drawBorders;
+    silhouetteMesh.visible = t > 0 && !drawBorders;
   }
 
-  // A gold beacon stands at every event's projected lat/lng; the active one
-  // pulses along with a ring on the ground.
-  const markerGeometry = new THREE.ConeGeometry(0.08, 0.34, 16);
-  const markerMaterial = new THREE.MeshStandardMaterial({
-    color: "#c9a13b",
-    emissive: "#c9a13b",
-    emissiveIntensity: 0.6,
-    roughness: 0.4,
-  });
-  const markers = timeline.map((entry: TimelineEntry) => {
-    const marker = new THREE.Mesh(markerGeometry, markerMaterial.clone());
-    marker.position.set(entry.x, 0.17, entry.z);
-    scene.add(marker);
-    return marker;
-  });
+  // The pin for whichever event is currently happening — the map carries no
+  // markers for events that have not come up yet. Built like a campaign-map
+  // counter: a dot on the exact coordinates, a staff, then a portrait and a
+  // name plate standing above it.
+  const DOT_RADIUS = 0.022;
+  const POLE_HEIGHT = 0.34;
+  const PORTRAIT_W = 0.34;
+  const PORTRAIT_H = 0.42;
+  const PLATE_W = 0.44;
+  const PLATE_H = 0.11;
+  const FRAME = 0.022;
+
+  const pin = new THREE.Group();
+  pin.visible = false;
+  scene.add(pin);
+
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(DOT_RADIUS, 24),
+    new THREE.MeshBasicMaterial({ color: "#1c1109" }),
+  );
+  dot.rotation.x = -Math.PI / 2;
+  dot.position.y = 0.032; // above the vector sea/land/coast layers
+  pin.add(dot);
+
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.005, 0.005, POLE_HEIGHT, 8),
+    new THREE.MeshBasicMaterial({ color: "#2a1608" }),
+  );
+  pole.position.y = POLE_HEIGHT / 2;
+  pin.add(pole);
 
   const pulseRing = new THREE.Mesh(
-    new THREE.RingGeometry(0.16, 0.22, 32),
+    new THREE.RingGeometry(0.05, 0.062, 32),
     new THREE.MeshBasicMaterial({
-      color: "#dc2626",
+      color: "#8a2020",
       transparent: true,
       side: THREE.DoubleSide,
     }),
   );
   pulseRing.rotation.x = -Math.PI / 2;
-  pulseRing.position.y = 0.03; // above the vector sea/land/coast layers
-  pulseRing.visible = false;
-  scene.add(pulseRing);
+  pulseRing.position.y = 0.031;
+  pin.add(pulseRing);
+
+  // Everything above the staff billboards together so the counter always reads
+  // face-on, however the map is tilted.
+  const plaque = new THREE.Group();
+  plaque.position.y = POLE_HEIGHT;
+  pin.add(plaque);
+
+  const portrait = new THREE.Group();
+  portrait.position.y = PORTRAIT_H / 2;
+  plaque.add(portrait);
+
+  portrait.add(
+    new THREE.Mesh(
+      new THREE.PlaneGeometry(PORTRAIT_W + FRAME, PORTRAIT_H + FRAME),
+      new THREE.MeshBasicMaterial({ color: "#9c7a24", side: THREE.DoubleSide }),
+    ),
+  );
+  const portraitImage = new THREE.Mesh(
+    new THREE.PlaneGeometry(PORTRAIT_W, PORTRAIT_H),
+    new THREE.MeshBasicMaterial({ color: "#2a1608", side: THREE.DoubleSide }),
+  );
+  portraitImage.position.z = 0.002;
+  portrait.add(portraitImage);
+
+  textureLoader.load(root.dataset.characterSrc!, (texture) => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = portraitImage.material as THREE.MeshBasicMaterial;
+    material.map = texture;
+    material.color.set("#ffffff");
+    material.needsUpdate = true;
+  });
+
+  // Name plate, drawn to a canvas because three has no text of its own. One
+  // texture per label, cached, since the tour revisits the same characters.
+  const plateTextures = new Map<string, THREE.CanvasTexture>();
+
+  function plateTexture(label: string): THREE.CanvasTexture {
+    const cached = plateTextures.get(label);
+    if (cached) return cached;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#2a1608";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#9c7a24";
+    ctx.lineWidth = 8;
+    ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+    ctx.fillStyle = "#e8d9b5";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    // Shrink the type until the label fits inside the plate's margins.
+    let fontSize = 62;
+    do {
+      ctx.font = `bold ${fontSize}px Georgia, serif`;
+      fontSize -= 2;
+    } while (ctx.measureText(label).width > canvas.width - 48 && fontSize > 18);
+    ctx.fillText(label, canvas.width / 2, canvas.height / 2 + 4);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    plateTextures.set(label, texture);
+    return texture;
+  }
+
+  const namePlate = new THREE.Mesh(
+    new THREE.PlaneGeometry(PLATE_W, PLATE_H),
+    new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide }),
+  );
+  plaque.add(namePlate);
 
   // Camera framing: an overview of the whole sheet, and the close-in view the
   // camera settles into over each event location.
@@ -444,6 +677,18 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     };
   }
 
+  // Light up the matching step in the event bar, same treatment as the SVG map.
+  function updateActiveButton(index: number) {
+    document.querySelectorAll("[data-event-index]").forEach((button) => {
+      const isActive =
+        Number((button as HTMLElement).dataset.eventIndex) === index;
+      button.classList.toggle("bg-[#c9a13b]", isActive);
+      button.classList.toggle("text-[#2a1608]", isActive);
+      button.classList.toggle("bg-[#3a2414]", !isActive);
+      button.classList.toggle("text-[#c9a13b]", !isActive);
+    });
+  }
+
   function showEvent(index: number, { chain = false } = {}) {
     const entry = timeline[index];
     if (!entry) return;
@@ -454,9 +699,25 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     charactersEl.textContent = entry.characters.join(" · ");
     card.classList.remove("opacity-0");
     setMapTexture(entry.mapSrc);
+    applyAgeStyle(entry.age);
 
-    pulseRing.position.set(entry.x, 0.03, entry.z);
-    pulseRing.visible = true;
+    // The pin only exists for the event that is happening right now; it moves
+    // with the tour. Named characters get the portrait, everything else just
+    // carries a plate with the year.
+    pin.position.set(entry.x, 0, entry.z);
+    pin.visible = true;
+
+    const hasCharacter = entry.characters.length > 0;
+    portrait.visible = hasCharacter;
+    namePlate.position.y = hasCharacter
+      ? PORTRAIT_H + 0.03 + PLATE_H / 2
+      : PLATE_H / 2;
+    (namePlate.material as THREE.MeshBasicMaterial).map = plateTexture(
+      hasCharacter ? entry.characters[0] : String(entry.year),
+    );
+    (namePlate.material as THREE.MeshBasicMaterial).needsUpdate = true;
+
+    updateActiveButton(index);
 
     const destination = new THREE.Vector3(entry.x, 0, entry.z);
     flyTo(destination, focusOffset(), () => {
@@ -467,7 +728,8 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
 
   function finishTour() {
     activeIndex = -1;
-    pulseRing.visible = false;
+    pin.visible = false;
+    updateActiveButton(-1);
     flyTo(
       OVERVIEW_TARGET,
       OVERVIEW_POSITION.clone().sub(OVERVIEW_TARGET),
@@ -521,20 +783,25 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
       }
     }
 
-    // Pulse the active beacon and its ground ring.
-    markers.forEach((marker: THREE.Mesh<THREE.ConeGeometry, THREE.MeshStandardMaterial>, i: number) => {
-      const isActive = i === activeIndex;
-      marker.scale.setScalar(isActive ? 1 + 0.2 * Math.sin(now * 0.006) : 1);
-      marker.material.emissiveIntensity = isActive ? 1 : 0.5;
-    });
-    if (pulseRing.visible) {
+    if (pin.visible) {
+      // The counter is sized against the camera distance so it keeps roughly
+      // the same screen size however far the user has zoomed.
+      const distance = camera.position.distanceTo(controls.target);
+      pin.scale.setScalar(
+        THREE.MathUtils.clamp(distance / FOCUS_DISTANCE, 0.4, 2.5),
+      );
+
+      // Full billboard on the plaque only: the staff and the dot stay planted
+      // on the map, while portrait and plate read face-on at any map tilt.
+      plaque.quaternion.copy(camera.quaternion);
+
       const pulse = (now % 1600) / 1600;
       pulseRing.scale.setScalar(1 + pulse * 1.6);
-      pulseRing.material.opacity = 0.7 * (1 - pulse);
+      (pulseRing.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - pulse);
     }
 
     controls.update();
-    updateCrossfade();
+    updateVectorLayer();
     renderer.render(scene, camera);
   });
 </script>
