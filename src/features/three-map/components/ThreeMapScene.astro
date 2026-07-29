@@ -3,10 +3,12 @@ import ancientAgeMap from "../../../assets/ancient-age.webp";
 import medievalAgeMap from "../../../assets/medieval-age.webp";
 import modernAgeMap from "../../../assets/modern-age.webp";
 import generalExample from "../../../assets/generalExample.webp";
-import EventBar from "../../world-map/components/EventBar.astro";
-import defaultEvents from "../../world-map/data/events.json";
+import pirateEvents from "../data/events.json";
+import romeEvents from "../data/events-rome.json";
+import persiaEvents from "../data/events-persia.json";
+import chinaEvents from "../data/events-china.json";
 
-// Each event's `age` picks the era-appropriate map raster, same as the SVG map.
+// Each event's `age` picks the era-appropriate map raster.
 const AGE_MAPS: Record<string, string> = {
   "Ancient History": ancientAgeMap.src,
   "Post-Classical / Medieval Period": medievalAgeMap.src,
@@ -23,11 +25,24 @@ interface HistoryEvent {
   age: string;
 }
 
+// Every chronicle ships with the page, so the switcher swaps between them
+// without a navigation.
+const CHRONICLES: { key: string; label: string; events: HistoryEvent[] }[] = [
+  { key: "pirates", label: "Pirates", events: pirateEvents },
+  { key: "rome", label: "Rome", events: romeEvents },
+  { key: "persia", label: "Persia", events: persiaEvents },
+  { key: "china", label: "China", events: chinaEvents },
+];
+
 interface Props {
-  events?: HistoryEvent[];
+  chronicle?: string;
 }
 
-const { events = defaultEvents } = Astro.props;
+const { chronicle = "pirates" } = Astro.props;
+const initialIndex = Math.max(
+  CHRONICLES.findIndex((entry) => entry.key === chronicle),
+  0,
+);
 
 // The map plane is an equirectangular sheet laid on the ground: 360° of
 // longitude across X, 180° of latitude across Z, at 1 unit per 10 degrees.
@@ -43,23 +58,29 @@ const project = (lng: number, lat: number) => ({
   z: -lat * UNITS_PER_DEGREE,
 });
 
-const timeline = events.map((event) => ({
-  year: event.year,
-  text: event.text,
-  characters: event.characters,
-  age: event.age,
-  mapSrc: mapForAge(event.age),
-  ...project(event.lng, event.lat),
+const chronicles = CHRONICLES.map((entry) => ({
+  key: entry.key,
+  label: entry.label,
+  timeline: entry.events.map((event) => ({
+    year: event.year,
+    text: event.text,
+    characters: event.characters,
+    age: event.age,
+    mapSrc: mapForAge(event.age),
+    ...project(event.lng, event.lat),
+  })),
 }));
 
-const initialMapSrc = mapForAge(events[0]?.age ?? "");
+const initialEvents = CHRONICLES[initialIndex].events;
+const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
 ---
 
 <div
   id="three-root"
   data-map-src={initialMapSrc}
   data-character-src={generalExample.src}
-  data-timeline={JSON.stringify(timeline)}
+  data-chronicles={JSON.stringify(chronicles)}
+  data-initial-index={initialIndex}
   data-plane={JSON.stringify({
     width: PLANE_W,
     height: PLANE_H,
@@ -98,7 +119,22 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     Drag to orbit · scroll to zoom
   </p>
 
-  <EventBar events={events} />
+  {/* Chronicle switcher, then the step bar the tour walks through. Both are
+  filled in by the scene script so a chronicle change rebuilds them. */}
+  <div
+    class="pointer-events-none fixed inset-x-0 bottom-6 z-20 flex flex-col items-center gap-2 px-4"
+  >
+    <div
+      id="chronicle-bar"
+      class="pointer-events-auto flex max-w-full gap-2 overflow-x-auto rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-3 py-2 [scrollbar-width:thin]"
+    >
+    </div>
+    <div
+      id="event-bar"
+      class="pointer-events-auto flex max-w-full gap-2 overflow-x-auto rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-3 py-2 [scrollbar-width:thin]"
+    >
+    </div>
+  </div>
 </div>
 
 <script>
@@ -124,13 +160,24 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     z: number;
   }
 
+  interface Chronicle {
+    key: string;
+    label: string;
+    timeline: TimelineEntry[];
+  }
+
   const root = document.getElementById("three-root") as HTMLElement;
   const canvas = document.getElementById("three-canvas") as HTMLCanvasElement;
-  const timeline: TimelineEntry[] = JSON.parse(root.dataset.timeline!);
+  const chronicles: Chronicle[] = JSON.parse(root.dataset.chronicles!);
   const plane: { width: number; height: number; unitsPerDegree: number } =
     JSON.parse(root.dataset.plane!);
   const UNITS_PER_DEGREE = plane.unitsPerDegree;
   const initialMapSrc = root.dataset.mapSrc!;
+
+  // The chronicle on show. Swapping one in rebuilds the step bar and restarts
+  // the tour, so everything downstream reads through this.
+  let chronicleIndex = Number(root.dataset.initialIndex ?? 0);
+  let timeline = chronicles[chronicleIndex].timeline;
 
   const yearEl = document.getElementById("event-year") as HTMLElement;
   const textEl = document.getElementById("event-text") as HTMLElement;
@@ -138,6 +185,8 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     "event-characters",
   ) as HTMLElement;
   const card = document.getElementById("event-card") as HTMLElement;
+  const chronicleBar = document.getElementById("chronicle-bar") as HTMLElement;
+  const eventBar = document.getElementById("event-bar") as HTMLElement;
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -843,16 +892,87 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     };
   }
 
-  // Light up the matching step in the event bar, same treatment as the SVG map.
+  // Both bars are built here rather than server-side, because switching
+  // chronicle changes how many steps there are.
+  const BUTTON_BASE =
+    "flex h-8 shrink-0 items-center justify-center rounded-full border border-[#9c7a24] font-serif text-sm font-bold transition-colors";
+
+  function paintButton(button: HTMLElement, isActive: boolean) {
+    button.classList.toggle("bg-[#c9a13b]", isActive);
+    button.classList.toggle("text-[#2a1608]", isActive);
+    button.classList.toggle("bg-[#3a2414]", !isActive);
+    button.classList.toggle("text-[#c9a13b]", !isActive);
+    button.classList.toggle("hover:bg-[#4a2c14]", !isActive);
+  }
+
+  // Light up the step the tour is on.
   function updateActiveButton(index: number) {
-    document.querySelectorAll("[data-event-index]").forEach((button) => {
-      const isActive =
-        Number((button as HTMLElement).dataset.eventIndex) === index;
-      button.classList.toggle("bg-[#c9a13b]", isActive);
-      button.classList.toggle("text-[#2a1608]", isActive);
-      button.classList.toggle("bg-[#3a2414]", !isActive);
-      button.classList.toggle("text-[#c9a13b]", !isActive);
+    eventBar.querySelectorAll("[data-event-index]").forEach((button) => {
+      paintButton(
+        button as HTMLElement,
+        Number((button as HTMLElement).dataset.eventIndex) === index,
+      );
     });
+  }
+
+  function renderEventBar() {
+    eventBar.replaceChildren(
+      ...timeline.map((entry: TimelineEntry, index: number) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.eventIndex = String(index);
+        button.title = `${entry.year} — ${entry.text}`;
+        button.className = `${BUTTON_BASE} w-8`;
+        button.textContent = String(index + 1);
+        paintButton(button, false);
+        button.addEventListener("click", () => selectEvent(index));
+        return button;
+      }),
+    );
+  }
+
+  function renderChronicleBar() {
+    chronicleBar.replaceChildren(
+      ...chronicles.map((entry: Chronicle, index: number) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `${BUTTON_BASE} px-4`;
+        button.textContent = entry.label;
+        paintButton(button, index === chronicleIndex);
+        button.addEventListener("click", () => selectChronicle(index));
+        return button;
+      }),
+    );
+  }
+
+  function selectEvent(index: number) {
+    autoplay = false;
+    dwellUntil = 0;
+    if (startTimeout) clearTimeout(startTimeout);
+    showEvent(index);
+  }
+
+  // Swap in another chronicle: stop the running tour, rebuild the steps, then
+  // start the new one from its first event.
+  function selectChronicle(index: number) {
+    if (index === chronicleIndex) return;
+    chronicleIndex = index;
+    timeline = chronicles[index].timeline;
+
+    if (startTimeout) clearTimeout(startTimeout);
+    dwellUntil = 0;
+    flight = null;
+    activeIndex = -1;
+    autoplay = true;
+    pin.visible = false;
+    card.classList.add("opacity-0");
+
+    renderChronicleBar();
+    renderEventBar();
+
+    camera.position.copy(OVERVIEW_POSITION);
+    controls.target.copy(OVERVIEW_TARGET);
+    startTimeout = setTimeout(() => showEvent(0, { chain: true }), START_DELAY_MS);
   }
 
   function showEvent(index: number, { chain = false } = {}) {
@@ -905,14 +1025,13 @@ const initialMapSrc = mapForAge(events[0]?.age ?? "");
     );
   }
 
-  // The event bar (or any host page) can steer the tour to a single event.
+  // Any host page can steer the tour to a single event.
   window.addEventListener("map:select-event", (event) => {
-    autoplay = false;
-    dwellUntil = 0;
-    if (startTimeout) clearTimeout(startTimeout);
-    showEvent((event as CustomEvent<{ index: number }>).detail.index);
+    selectEvent((event as CustomEvent<{ index: number }>).detail.index);
   });
 
+  renderChronicleBar();
+  renderEventBar();
   startTimeout = setTimeout(
     () => showEvent(0, { chain: true }),
     START_DELAY_MS,
