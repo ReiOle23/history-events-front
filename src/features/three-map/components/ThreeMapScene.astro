@@ -220,6 +220,11 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     mapMaterial,
   );
   mapMesh.rotation.x = -Math.PI / 2; // lie flat
+  // Every layer of the sheet is transparent and near-coplanar, so three.js
+  // cannot sort them by depth reliably — as the camera orbits, the sort flips
+  // and the sea can end up drawn over the land. Explicit render order pins the
+  // stack: raster, sea, land, coast ink, borders.
+  mapMesh.renderOrder = 0;
   scene.add(mapMesh);
 
   // Era rasters are swapped in as the tour moves between ages; each one is
@@ -515,6 +520,7 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     color: string,
     y: number,
     lineWidth: number,
+    renderOrder: number,
   ) => {
     const geometry = new LineSegmentsGeometry();
     geometry.setPositions(points);
@@ -529,6 +535,7 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     const lines = new LineSegments2(geometry, material);
     lines.rotation.x = -Math.PI / 2; // lie flat, north toward -Z
     lines.position.y = y;
+    lines.renderOrder = renderOrder;
     scene.add(lines);
     return { lines, material };
   };
@@ -576,7 +583,8 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   });
   const landMesh = new THREE.Mesh(mergeGeometries(landParts), landMaterial);
   landMesh.rotation.x = -Math.PI / 2; // lie flat, north toward -Z
-  landMesh.position.y = 0.004;
+  landMesh.position.y = 0.006;
+  landMesh.renderOrder = 2;
   scene.add(landMesh);
 
   const landColors = landMesh.geometry.attributes.color as THREE.BufferAttribute;
@@ -595,8 +603,9 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   const { lines: borderLines, material: borderMaterial } = lineSegmentsFrom(
     borderPoints,
     "#3a2414",
-    0.008,
+    0.012,
     1.4,
+    4,
   );
 
   // Silhouette layer for the ages before nation states: topojson `merge`
@@ -631,14 +640,16 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     silhouetteMaterial,
   );
   silhouetteMesh.rotation.x = -Math.PI / 2;
-  silhouetteMesh.position.y = 0.004;
+  silhouetteMesh.position.y = 0.006;
+  silhouetteMesh.renderOrder = 2;
   scene.add(silhouetteMesh);
 
   const { lines: coastLines, material: coastMaterial } = lineSegmentsFrom(
     coastPoints,
     "#3a2414",
-    0.006,
+    0.01,
     2.8,
+    3,
   );
 
   // The sea runs wider than the raster so the rings that unwrap past ±180°
@@ -648,6 +659,7 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     map: seaTexture,
     transparent: true,
     opacity: 0,
+    depthWrite: false,
   });
   const seaMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(plane.width * 1.2, plane.height),
@@ -655,6 +667,7 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   );
   seaMesh.rotation.x = -Math.PI / 2;
   seaMesh.position.y = 0.002;
+  seaMesh.renderOrder = 1;
   scene.add(seaMesh);
 
   // Era dressing. Palettes are repainted at once (the country layer is hidden
@@ -754,7 +767,8 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     }),
   );
   pulseRing.rotation.x = -Math.PI / 2;
-  pulseRing.position.y = 0.031;
+  pulseRing.position.y = 0.034;
+  pulseRing.renderOrder = 5;
   pin.add(pulseRing);
 
   // Everything above the staff billboards together so the counter always reads
@@ -828,6 +842,7 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     new THREE.PlaneGeometry(PLATE_W, PLATE_H),
     new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide }),
   );
+  namePlate.renderOrder = 6;
   plaque.add(namePlate);
 
   // Camera framing: an overview of the whole sheet, and the close-in view the
