@@ -5,7 +5,8 @@
 		"lat": 41.90,
 		"lng": 12.50,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": "building"
 	},
 	{
 		"year": -509,
@@ -13,7 +14,8 @@
 		"lat": 41.90,
 		"lng": 12.50,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": -264,
@@ -21,7 +23,8 @@
 		"lat": 38.19,
 		"lng": 15.55,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": "battle"
 	},
 	{
 		"year": -44,
@@ -29,7 +32,8 @@
 		"lat": 41.90,
 		"lng": 12.48,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": -27,
@@ -37,7 +41,8 @@
 		"lat": 41.90,
 		"lng": 12.50,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": 80,
@@ -45,7 +50,8 @@
 		"lat": 41.89,
 		"lng": 12.49,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": "building"
 	},
 	{
 		"year": 117,
@@ -53,7 +59,8 @@
 		"lat": 41.90,
 		"lng": 12.50,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": 313,
@@ -61,7 +68,8 @@
 		"lat": 45.46,
 		"lng": 9.19,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": 395,
@@ -69,7 +77,8 @@
 		"lat": 41.01,
 		"lng": 28.98,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": 476,
@@ -77,6 +86,7 @@
 		"lat": 44.42,
 		"lng": 12.20,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	}
 ]

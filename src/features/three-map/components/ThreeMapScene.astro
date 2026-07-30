@@ -3,10 +3,15 @@ import ancientAgeMap from "../../../assets/ancient-age.webp";
 import medievalAgeMap from "../../../assets/medieval-age.webp";
 import modernAgeMap from "../../../assets/modern-age.webp";
 import generalExample from "../../../assets/generalExample.webp";
+import battleVideoUrl from "../../../assets/battle.mp4?url";
+import buildingVideoUrl from "../../../assets/building.mp4?url";
+import stormVideoUrl from "../../../assets/storm.mp4?url";
+import peaceVideoUrl from "../../../assets/peace.mp4?url";
 import pirateEvents from "../data/events.json";
 import romeEvents from "../data/events-rome.json";
 import persiaEvents from "../data/events-persia.json";
 import chinaEvents from "../data/events-china.json";
+import conquestEvents from "../data/events-spanish-conquest.json";
 
 // Each event's `age` picks the era-appropriate map raster.
 const AGE_MAPS: Record<string, string> = {
@@ -23,7 +28,16 @@ interface HistoryEvent {
   lng: number;
   characters: string[];
   age: string;
+  action?: string;
 }
+
+// An event's `action` mounts a moving scene on its pin.
+const ACTION_VIDEOS: Record<string, string> = {
+  battle: battleVideoUrl,
+  building: buildingVideoUrl,
+  storm: stormVideoUrl,
+  peace: peaceVideoUrl,
+};
 
 // Every chronicle ships with the page, so the switcher swaps between them
 // without a navigation.
@@ -32,6 +46,7 @@ const CHRONICLES: { key: string; label: string; events: HistoryEvent[] }[] = [
   { key: "rome", label: "Rome", events: romeEvents },
   { key: "persia", label: "Persia", events: persiaEvents },
   { key: "china", label: "China", events: chinaEvents },
+  { key: "conquest", label: "Conquista", events: conquestEvents },
 ];
 
 interface Props {
@@ -66,6 +81,7 @@ const chronicles = CHRONICLES.map((entry) => ({
     text: event.text,
     characters: event.characters,
     age: event.age,
+    action: event.action ?? "",
     mapSrc: mapForAge(event.age),
     ...project(event.lng, event.lat),
   })),
@@ -79,6 +95,7 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   id="three-root"
   data-map-src={initialMapSrc}
   data-character-src={generalExample.src}
+  data-action-videos={JSON.stringify(ACTION_VIDEOS)}
   data-chronicles={JSON.stringify(chronicles)}
   data-initial-index={initialIndex}
   data-plane={JSON.stringify({
@@ -155,6 +172,7 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     text: string;
     characters: string[];
     age: string;
+    action: string;
     mapSrc: string;
     x: number;
     z: number;
@@ -737,6 +755,8 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   const PORTRAIT_H = 0.42;
   const PLATE_W = 0.44;
   const PLATE_H = 0.11;
+  const VIDEO_W = 0.5;
+  const VIDEO_H = 0.28;
   const FRAME = 0.022;
 
   const pin = new THREE.Group();
@@ -801,6 +821,81 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     material.color.set("#ffffff");
     material.needsUpdate = true;
   });
+
+  // Events tagged with an action mount a moving scene next to the portrait:
+  // battle.mp4 for a fight, building.mp4 for something raised, peace.mp4 for a
+  // truce or treaty.
+  const actionVideos: Record<string, string> = JSON.parse(
+    root.dataset.actionVideos!,
+  );
+  const videoElements = new Map<string, HTMLVideoElement>();
+  const videoTextures = new Map<string, THREE.VideoTexture>();
+
+  // Muted + inline is what lets a video autoplay without a user gesture; the
+  // element stays out of the document flow and only feeds the texture.
+  function videoTexture(action: string): THREE.VideoTexture | null {
+    const source = actionVideos[action];
+    if (!source) return null;
+
+    const cached = videoTextures.get(action);
+    if (cached) return cached;
+
+    const video = document.createElement("video");
+    video.src = source;
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    videoElements.set(action, video);
+
+    const texture = new THREE.VideoTexture(video);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    videoTextures.set(action, texture);
+    return texture;
+  }
+
+  const actionPanel = new THREE.Group();
+  actionPanel.position.y = VIDEO_H / 2;
+  actionPanel.visible = false;
+  plaque.add(actionPanel);
+
+  actionPanel.add(
+    new THREE.Mesh(
+      new THREE.PlaneGeometry(VIDEO_W + FRAME, VIDEO_H + FRAME),
+      new THREE.MeshBasicMaterial({ color: "#9c7a24", side: THREE.DoubleSide }),
+    ),
+  );
+  const actionScreen = new THREE.Mesh(
+    new THREE.PlaneGeometry(VIDEO_W, VIDEO_H),
+    new THREE.MeshBasicMaterial({ color: "#2a1608", side: THREE.DoubleSide }),
+  );
+  actionScreen.position.z = 0.002;
+  actionPanel.add(actionScreen);
+
+  // Only the event on show plays; everything else is rewound and paused so no
+  // off-screen video keeps decoding.
+  function playAction(action: string) {
+    videoElements.forEach((video, key) => {
+      if (key === action) return;
+      video.pause();
+      video.currentTime = 0;
+    });
+
+    const texture = videoTexture(action);
+    const material = actionScreen.material as THREE.MeshBasicMaterial;
+    if (!texture) {
+      actionPanel.visible = false;
+      return;
+    }
+
+    material.map = texture;
+    material.color.set("#ffffff");
+    material.needsUpdate = true;
+    actionPanel.visible = true;
+    void videoElements.get(action)?.play().catch(() => {
+      // Autoplay refused: the frame stays on whatever the video last decoded.
+    });
+  }
 
   // Name plate, drawn to a canvas because three has no text of its own. One
   // texture per label, cached, since the tour revisits the same characters.
@@ -1008,11 +1103,34 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     pin.position.set(entry.x, 0, entry.z);
     pin.visible = true;
 
+    // Lay the portrait and the action scene out side by side, centred on the
+    // staff, with the name plate riding above whichever is taller.
     const hasCharacter = entry.characters.length > 0;
     portrait.visible = hasCharacter;
-    namePlate.position.y = hasCharacter
-      ? PORTRAIT_H + 0.03 + PLATE_H / 2
-      : PLATE_H / 2;
+    playAction(entry.action);
+
+    const hasAction = actionPanel.visible;
+    const GAP = 0.04;
+    const rowWidth =
+      (hasCharacter ? PORTRAIT_W : 0) +
+      (hasAction ? VIDEO_W : 0) +
+      (hasCharacter && hasAction ? GAP : 0);
+
+    let cursor = -rowWidth / 2;
+    if (hasCharacter) {
+      portrait.position.x = cursor + PORTRAIT_W / 2;
+      cursor += PORTRAIT_W + GAP;
+    }
+    if (hasAction) {
+      actionPanel.position.x = cursor + VIDEO_W / 2;
+    }
+
+    const rowHeight = Math.max(
+      hasCharacter ? PORTRAIT_H : 0,
+      hasAction ? VIDEO_H : 0,
+    );
+    namePlate.position.y =
+      rowHeight > 0 ? rowHeight + 0.03 + PLATE_H / 2 : PLATE_H / 2;
     (namePlate.material as THREE.MeshBasicMaterial).map = plateTexture(
       hasCharacter ? entry.characters[0] : String(entry.year),
     );
@@ -1030,6 +1148,7 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   function finishTour() {
     activeIndex = -1;
     pin.visible = false;
+    playAction("");
     updateActiveButton(-1);
     flyTo(
       OVERVIEW_TARGET,

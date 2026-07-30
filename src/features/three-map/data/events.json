@@ -5,7 +5,8 @@
 		"lat": 24.0,
 		"lng": -76.0,
 		"characters": ["Barbablanca"],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": ""
 	},
 	{
 		"year": 1508,
@@ -13,7 +14,8 @@
 		"lat": 25.05,
 		"lng": -77.35,
 		"characters": ["Capitana Morgana"],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "battle"
 	},
 	{
 		"year": 1513,
@@ -21,7 +23,8 @@
 		"lat": 22.5,
 		"lng": -74.5,
 		"characters": ["El Cuervo Negro"],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "storm"
 	},
 	{
 		"year": 1519,
@@ -29,7 +32,8 @@
 		"lat": 20.07,
 		"lng": -72.79,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "building"
 	},
 	{
 		"year": 1524,
@@ -37,7 +41,8 @@
 		"lat": 21.5,
 		"lng": -79.0,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": ""
 	},
 	{
 		"year": 1531,
@@ -45,7 +50,8 @@
 		"lat": 18.34,
 		"lng": -64.72,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "battle"
 	},
 	{
 		"year": 1537,
@@ -53,7 +59,8 @@
 		"lat": 24.5,
 		"lng": -81.0,
 		"characters": ["Barbablanca"],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "battle"
 	},
 	{
 		"year": 1542,
@@ -61,7 +68,8 @@
 		"lat": 18.2,
 		"lng": -66.5,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "building"
 	},
 	{
 		"year": 1549,
@@ -69,7 +77,8 @@
 		"lat": 32.3,
 		"lng": -64.7,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": ""
 	},
 	{
 		"year": 1556,
@@ -77,7 +86,8 @@
 		"lat": 24.0,
 		"lng": -76.0,
 		"characters": ["Capitana Morgana"],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "peace"
 	},
 	{
 		"year": 1563,
@@ -85,7 +95,8 @@
 		"lat": 17.9,
 		"lng": -76.8,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": ""
 	},
 	{
 		"year": 1571,
@@ -93,7 +104,8 @@
 		"lat": 23.0,
 		"lng": -75.5,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "storm"
 	},
 	{
 		"year": 1578,
@@ -101,7 +113,8 @@
 		"lat": 20.0,
 		"lng": -77.5,
 		"characters": ["El Cuervo Negro"],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "battle"
 	},
 	{
 		"year": 1585,
@@ -109,7 +122,8 @@
 		"lat": 24.0,
 		"lng": -76.0,
 		"characters": ["Barbablanca"],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": ""
 	},
 	{
 		"year": 1593,
@@ -117,7 +131,8 @@
 		"lat": 18.2,
 		"lng": -66.5,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": ""
 	},
 	{
 		"year": 1601,
@@ -125,6 +140,7 @@
 		"lat": 24.5,
 		"lng": -81.0,
 		"characters": ["Capitana Morgana"],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": "battle"
 	}
 ]

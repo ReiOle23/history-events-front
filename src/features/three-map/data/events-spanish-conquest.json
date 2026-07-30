@@ -1,0 +1,182 @@
+[
+	{
+		"year": 1492,
+		"text": "Granada fell to the Catholic Monarchs, ending the Reconquista and freeing the Crown to fund an Atlantic voyage",
+		"lat": 37.18,
+		"lng": -3.60,
+		"characters": [],
+		"age": "Early Modern Period",
+		"action": "battle"
+	},
+	{
+		"year": 1492,
+		"text": "The Capitulations of Santa Fe granted Columbus the titles of Admiral and Viceroy of any lands he might find",
+		"lat": 37.19,
+		"lng": -3.71,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1492,
+		"text": "Columbus sailed from Palos de la Frontera with the Niña, the Pinta and the Santa María",
+		"lat": 37.23,
+		"lng": -6.89,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1492,
+		"text": "Landfall at Guanahaní, named San Salvador and claimed for Castile",
+		"lat": 24.05,
+		"lng": -74.50,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1492,
+		"text": "The ships reached the coast of Cuba, which Columbus took for the Asian mainland",
+		"lat": 21.10,
+		"lng": -75.85,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1492,
+		"text": "Columbus sighted the island he named La Española, later Hispaniola",
+		"lat": 19.80,
+		"lng": -73.38,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1492,
+		"text": "The Santa María ran aground on Christmas night and her timbers were used to raise Fort La Navidad, the first Spanish settlement in the Americas",
+		"lat": 19.75,
+		"lng": -72.20,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": "storm"
+	},
+	{
+		"year": 1493,
+		"text": "Spaniards and Ciguayo warriors clashed at Samaná Bay, the first armed fight between the two worlds",
+		"lat": 19.20,
+		"lng": -69.33,
+		"characters": [],
+		"age": "Early Modern Period",
+		"action": "battle"
+	},
+	{
+		"year": 1493,
+		"text": "Columbus was received in Barcelona by Isabella and Ferdinand and paraded the gold, parrots and captives he had brought back",
+		"lat": 41.38,
+		"lng": 2.17,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1493,
+		"text": "Pope Alexander VI issued the bull Inter caetera, granting Castile the lands west of a line drawn through the Atlantic",
+		"lat": 41.90,
+		"lng": 12.45,
+		"characters": [],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1493,
+		"text": "The second voyage sailed from Cádiz with seventeen ships carrying settlers, horses and livestock",
+		"lat": 36.53,
+		"lng": -6.29,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1493,
+		"text": "The fleet claimed the island of San Juan Bautista, today Puerto Rico",
+		"lat": 18.22,
+		"lng": -67.16,
+		"characters": [],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1493,
+		"text": "Columbus returned to La Navidad to find the fort burned and its whole garrison dead",
+		"lat": 19.75,
+		"lng": -72.20,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": "battle"
+	},
+	{
+		"year": 1494,
+		"text": "La Isabela was founded on the north coast of Hispaniola, the first planned Spanish town in the New World",
+		"lat": 19.89,
+		"lng": -71.08,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": "building"
+	},
+	{
+		"year": 1494,
+		"text": "Fort Santo Tomás was raised in the Cibao valley to hold the goldfields inland",
+		"lat": 19.23,
+		"lng": -70.72,
+		"characters": [],
+		"age": "Early Modern Period",
+		"action": "building"
+	},
+	{
+		"year": 1494,
+		"text": "The Treaty of Tordesillas divided the unclaimed world between Castile and Portugal along a meridian in the Atlantic",
+		"lat": 41.50,
+		"lng": -5.00,
+		"characters": [],
+		"age": "Early Modern Period",
+		"action": "peace"
+	},
+	{
+		"year": 1495,
+		"text": "Spanish cavalry and arquebuses broke the massed Taíno host at the Battle of Vega Real",
+		"lat": 19.30,
+		"lng": -70.50,
+		"characters": [],
+		"age": "Early Modern Period",
+		"action": "battle"
+	},
+	{
+		"year": 1496,
+		"text": "Bartholomew Columbus founded Santo Domingo, the oldest lasting European city in the Americas",
+		"lat": 18.47,
+		"lng": -69.90,
+		"characters": ["Bartolomé Colón"],
+		"age": "Early Modern Period",
+		"action": "building"
+	},
+	{
+		"year": 1498,
+		"text": "The third voyage reached the Paria peninsula, the first Spanish landing on the American mainland",
+		"lat": 10.66,
+		"lng": -62.02,
+		"characters": ["Cristóbal Colón"],
+		"age": "Early Modern Period",
+		"action": ""
+	},
+	{
+		"year": 1500,
+		"text": "Francisco de Bobadilla seized the government of Hispaniola and shipped Columbus back to Spain in chains",
+		"lat": 18.47,
+		"lng": -69.90,
+		"characters": ["Francisco de Bobadilla"],
+		"age": "Early Modern Period",
+		"action": ""
+	}
+]

@@ -5,7 +5,8 @@
 		"lat": 34.33,
 		"lng": 108.70,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": -206,
@@ -13,7 +14,8 @@
 		"lat": 34.27,
 		"lng": 108.95,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": -138,
@@ -21,7 +23,8 @@
 		"lat": 40.14,
 		"lng": 94.66,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": 105,
@@ -29,7 +32,8 @@
 		"lat": 34.68,
 		"lng": 112.45,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": 220,
@@ -37,7 +41,8 @@
 		"lat": 34.68,
 		"lng": 112.45,
 		"characters": [],
-		"age": "Ancient History"
+		"age": "Ancient History",
+		"action": ""
 	},
 	{
 		"year": 581,
@@ -45,7 +50,8 @@
 		"lat": 34.27,
 		"lng": 108.95,
 		"characters": [],
-		"age": "Post-Classical / Medieval Period"
+		"age": "Post-Classical / Medieval Period",
+		"action": ""
 	},
 	{
 		"year": 618,
@@ -53,7 +59,8 @@
 		"lat": 34.27,
 		"lng": 108.95,
 		"characters": [],
-		"age": "Post-Classical / Medieval Period"
+		"age": "Post-Classical / Medieval Period",
+		"action": ""
 	},
 	{
 		"year": 1279,
@@ -61,7 +68,8 @@
 		"lat": 39.90,
 		"lng": 116.40,
 		"characters": [],
-		"age": "Post-Classical / Medieval Period"
+		"age": "Post-Classical / Medieval Period",
+		"action": ""
 	},
 	{
 		"year": 1368,
@@ -69,7 +77,8 @@
 		"lat": 32.06,
 		"lng": 118.79,
 		"characters": [],
-		"age": "Post-Classical / Medieval Period"
+		"age": "Post-Classical / Medieval Period",
+		"action": ""
 	},
 	{
 		"year": 1644,
@@ -77,6 +86,7 @@
 		"lat": 39.90,
 		"lng": 116.40,
 		"characters": [],
-		"age": "Early Modern Period"
+		"age": "Early Modern Period",
+		"action": ""
 	}
 ]
