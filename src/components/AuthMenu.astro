@@ -1,0 +1,490 @@
+---
+// Header controls plus the sign-in dialog they open. The rules mirrored in the
+// form fields are the ones the API enforces (src/domain/entities/user.py and
+// raw_password.py): an email it can parse, a 3-30 character username of letters,
+// digits, dots, dashes or underscores, and a password of 8 to 128 characters.
+const apiBase = (
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:59800"
+).replace(/\/$/, "");
+
+const FIELD_CLASS =
+  "w-full rounded-lg border-2 border-brass/60 bg-ink/60 px-3 py-2 text-sm text-parchment outline-none transition-colors placeholder:text-parchment/35 focus:border-gold";
+const LABEL_CLASS = "block text-xs uppercase tracking-widest text-parchment/60";
+const SUBMIT_CLASS =
+  "mt-2 w-full rounded-full border-2 border-brass bg-gold px-5 py-2.5 font-bold text-leather transition-colors hover:bg-parchment disabled:cursor-not-allowed disabled:opacity-60";
+const ALERT_CLASS =
+  "hidden rounded-lg border border-red-400/40 bg-red-950/40 px-3 py-2 text-sm text-red-200";
+---
+
+<div id="auth-menu" data-api={apiBase} class="flex items-center gap-2 sm:gap-3">
+  {
+    /* Signed out. Rendered by default so the controls are there even if the
+  script never runs; the signed-in state is swapped in once a session is read. */
+  }
+  <div id="auth-guest" class="flex items-center gap-2 sm:gap-3">
+    <button
+      type="button"
+      data-auth-open="login"
+      class="text-sm text-parchment/70 transition-colors hover:text-gold"
+    >
+      Log in
+    </button>
+    <button
+      type="button"
+      data-auth-open="register"
+      class="rounded-full border-2 border-brass px-4 py-1.5 text-sm font-bold text-gold transition-colors hover:bg-leather"
+    >
+      Register
+    </button>
+  </div>
+
+  <div id="auth-user" class="hidden items-center gap-3">
+    <span class="hidden text-sm text-parchment/70 sm:inline">
+      Signed in as <span id="auth-username" class="font-bold text-gold"></span>
+    </span>
+    <button
+      id="auth-logout"
+      type="button"
+      class="rounded-full border-2 border-brass px-4 py-1.5 text-sm font-bold text-gold transition-colors hover:bg-leather"
+    >
+      Log out
+    </button>
+  </div>
+</div>
+
+<dialog
+  id="auth-dialog"
+  class="m-auto w-[min(26rem,92vw)] rounded-2xl border-2 border-brass bg-leather p-0 text-parchment backdrop:bg-ink/85 backdrop:backdrop-blur-sm"
+>
+  <div class="p-6">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 id="auth-title" class="text-2xl font-bold text-gold">
+          Welcome back
+        </h2>
+        <p id="auth-subtitle" class="mt-1 text-sm text-parchment/65">
+          Sign in to keep the histories you send.
+        </p>
+      </div>
+      <button
+        id="auth-close"
+        type="button"
+        aria-label="Close"
+        class="-mt-1 rounded-full px-2 text-2xl leading-none text-parchment/50 transition-colors hover:text-gold"
+      >
+        ×
+      </button>
+    </div>
+
+    <div
+      class="mt-5 flex gap-1 rounded-full border-2 border-brass/60 bg-ink/50 p-1"
+    >
+      <button
+        type="button"
+        data-auth-tab="login"
+        class="flex-1 rounded-full px-4 py-1.5 text-sm font-bold transition-colors"
+      >
+        Log in
+      </button>
+      <button
+        type="button"
+        data-auth-tab="register"
+        class="flex-1 rounded-full px-4 py-1.5 text-sm font-bold transition-colors"
+      >
+        Register
+      </button>
+    </div>
+
+    <form id="auth-login-form" data-auth-form="login" class="mt-5 space-y-4">
+      <p id="auth-login-error" role="alert" class={ALERT_CLASS}></p>
+      <div class="space-y-1.5">
+        <label class={LABEL_CLASS} for="login-email">Email</label>
+        <input
+          id="login-email"
+          name="email"
+          type="email"
+          required
+          autocomplete="email"
+          placeholder="you@example.com"
+          class={FIELD_CLASS}
+        />
+      </div>
+      <div class="space-y-1.5">
+        <label class={LABEL_CLASS} for="login-password">Password</label>
+        <input
+          id="login-password"
+          name="password"
+          type="password"
+          required
+          autocomplete="current-password"
+          placeholder="••••••••"
+          class={FIELD_CLASS}
+        />
+      </div>
+      <button type="submit" class={SUBMIT_CLASS}>Log in</button>
+      <p class="text-center text-sm text-parchment/55">
+        No account yet?
+        <button
+          type="button"
+          data-auth-tab="register"
+          class="ml-1 font-bold text-gold underline decoration-brass underline-offset-4 hover:text-parchment"
+        >
+          Register
+        </button>
+      </p>
+    </form>
+
+    <form
+      id="auth-register-form"
+      data-auth-form="register"
+      class="mt-5 hidden space-y-4"
+    >
+      <p id="auth-register-error" role="alert" class={ALERT_CLASS}></p>
+      <div class="space-y-1.5">
+        <label class={LABEL_CLASS} for="register-email">Email</label>
+        <input
+          id="register-email"
+          name="email"
+          type="email"
+          required
+          maxlength="254"
+          autocomplete="email"
+          placeholder="you@example.com"
+          class={FIELD_CLASS}
+        />
+      </div>
+      <div class="space-y-1.5">
+        <label class={LABEL_CLASS} for="register-username">Username</label>
+        <input
+          id="register-username"
+          name="username"
+          type="text"
+          required
+          pattern="[A-Za-z0-9._\-]{3,30}"
+          title="3 to 30 letters, digits, dots, dashes or underscores"
+          autocomplete="username"
+          placeholder="chronicler"
+          class={FIELD_CLASS}
+        />
+        <p class="text-xs text-parchment/45">
+          3–30 letters, digits, dots, dashes or underscores.
+        </p>
+      </div>
+      <div class="space-y-1.5">
+        <label class={LABEL_CLASS} for="register-password">Password</label>
+        <input
+          id="register-password"
+          name="password"
+          type="password"
+          required
+          minlength="8"
+          maxlength="128"
+          autocomplete="new-password"
+          placeholder="At least 8 characters"
+          class={FIELD_CLASS}
+        />
+      </div>
+      <button type="submit" class={SUBMIT_CLASS}>Create account</button>
+      <p class="text-center text-sm text-parchment/55">
+        Already have an account?
+        <button
+          type="button"
+          data-auth-tab="login"
+          class="ml-1 font-bold text-gold underline decoration-brass underline-offset-4 hover:text-parchment"
+        >
+          Log in
+        </button>
+      </p>
+    </form>
+  </div>
+</dialog>
+
+<script>
+  interface AuthUser {
+    id: string;
+    email: string;
+    username: string;
+    created_date: string;
+  }
+
+  interface Session {
+    token: string;
+    expiresAt: number;
+    user: AuthUser;
+  }
+
+  const menu = document.getElementById("auth-menu") as HTMLElement;
+  const api = menu.dataset.api!;
+  const STORAGE_KEY = "chronicles.session";
+
+  const guestEl = document.getElementById("auth-guest") as HTMLElement;
+  const userEl = document.getElementById("auth-user") as HTMLElement;
+  const usernameEl = document.getElementById("auth-username") as HTMLElement;
+  const logoutButton = document.getElementById(
+    "auth-logout",
+  ) as HTMLButtonElement;
+  const dialog = document.getElementById("auth-dialog") as HTMLDialogElement;
+  const titleEl = document.getElementById("auth-title") as HTMLElement;
+  const subtitleEl = document.getElementById("auth-subtitle") as HTMLElement;
+  const loginForm = document.getElementById(
+    "auth-login-form",
+  ) as HTMLFormElement;
+  const registerForm = document.getElementById(
+    "auth-register-form",
+  ) as HTMLFormElement;
+  const loginError = document.getElementById("auth-login-error") as HTMLElement;
+  const registerError = document.getElementById(
+    "auth-register-error",
+  ) as HTMLElement;
+
+  const COPY = {
+    login: {
+      title: "Welcome back",
+      subtitle: "Sign in to keep the histories you send.",
+    },
+    register: {
+      title: "Join the archive",
+      subtitle: "An account keeps your chronicles under your name.",
+    },
+  };
+
+  // ── Session ──────────────────────────────────────────────────────────────
+
+  function readSession(): Session | null {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const session = JSON.parse(raw) as Session;
+      // An expired token would only earn a 401, so drop it before it is used.
+      if (!session?.token || session.expiresAt <= Date.now()) return null;
+      return session;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeSession(session: Session | null) {
+    if (session) localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    else localStorage.removeItem(STORAGE_KEY);
+    paintMenu(session);
+    // Anything else on the page that cares about who is signed in listens here.
+    window.dispatchEvent(
+      new CustomEvent("chronicles:session", { detail: session }),
+    );
+  }
+
+  function paintMenu(session: Session | null) {
+    guestEl.classList.toggle("hidden", Boolean(session));
+    guestEl.classList.toggle("flex", !session);
+    userEl.classList.toggle("hidden", !session);
+    userEl.classList.toggle("flex", Boolean(session));
+    usernameEl.textContent = session?.user.username ?? "";
+  }
+
+  // ── Dialog ───────────────────────────────────────────────────────────────
+
+  function selectTab(tab: "login" | "register") {
+    for (const button of document.querySelectorAll<HTMLElement>(
+      "[data-auth-tab]",
+    )) {
+      if (!button.classList.contains("flex-1")) continue; // the inline text links
+      const active = button.dataset.authTab === tab;
+      button.classList.toggle("bg-gold", active);
+      button.classList.toggle("text-leather", active);
+      button.classList.toggle("text-gold/70", !active);
+      button.classList.toggle("hover:text-gold", !active);
+    }
+    loginForm.classList.toggle("hidden", tab !== "login");
+    registerForm.classList.toggle("hidden", tab !== "register");
+    titleEl.textContent = COPY[tab].title;
+    subtitleEl.textContent = COPY[tab].subtitle;
+    hideError(loginError);
+    hideError(registerError);
+  }
+
+  function openDialog(tab: "login" | "register") {
+    selectTab(tab);
+    if (!dialog.open) dialog.showModal();
+    const first = (tab === "login" ? loginForm : registerForm).querySelector(
+      "input",
+    );
+    (first as HTMLInputElement | null)?.focus();
+  }
+
+  function showError(element: HTMLElement, message: string) {
+    element.textContent = message;
+    element.classList.remove("hidden");
+  }
+
+  function hideError(element: HTMLElement) {
+    element.textContent = "";
+    element.classList.add("hidden");
+  }
+
+  // ── Requests ─────────────────────────────────────────────────────────────
+
+  async function post(path: string, body: unknown) {
+    const response = await fetch(`${api}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
+    if (!response.ok) throw new Error(detailOf(data, response.status));
+    return data;
+  }
+
+  // FastAPI reports its own validation failures as a list of objects, so a
+  // `detail` that is not a string has to be flattened before it is shown.
+  function detailOf(data: any, status: number): string {
+    const detail = data?.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail) && detail.length) {
+      return detail.map((item) => item?.msg ?? "Invalid value").join(". ");
+    }
+    return `Something went wrong (${status}).`;
+  }
+
+  function sessionFrom(token: {
+    access_token: string;
+    expires_in: number;
+    user: AuthUser;
+  }): Session {
+    return {
+      token: token.access_token,
+      expiresAt: Date.now() + token.expires_in * 1000,
+      user: token.user,
+    };
+  }
+
+  async function submit(
+    form: HTMLFormElement,
+    errorEl: HTMLElement,
+    busyLabel: string,
+    run: (values: Record<string, string>) => Promise<Session>,
+  ) {
+    const button = form.querySelector(
+      "button[type=submit]",
+    ) as HTMLButtonElement;
+    const label = button.textContent;
+    const values = Object.fromEntries(new FormData(form).entries()) as Record<
+      string,
+      string
+    >;
+
+    hideError(errorEl);
+    button.disabled = true;
+    button.textContent = busyLabel;
+    try {
+      writeSession(await run(values));
+      form.reset();
+      dialog.close();
+    } catch (error) {
+      showError(
+        errorEl,
+        error instanceof TypeError
+          ? `Could not reach the chronicles service at ${api}. Start the backend and try again.`
+          : (error as Error).message,
+      );
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+
+  loginForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submit(loginForm, loginError, "Signing in…", async (values) =>
+      sessionFrom(
+        await post("/auth/login", {
+          email: values.email,
+          password: values.password,
+        }),
+      ),
+    );
+  });
+
+  registerForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submit(registerForm, registerError, "Creating account…", async (values) => {
+      // Register only returns the account, so the new user is signed in straight
+      // after with the credentials they just typed.
+      await post("/auth/register", {
+        email: values.email,
+        username: values.username,
+        password: values.password,
+      });
+      return sessionFrom(
+        await post("/auth/login", {
+          email: values.email,
+          password: values.password,
+        }),
+      );
+    });
+  });
+
+  // ── Wiring ───────────────────────────────────────────────────────────────
+
+  for (const button of document.querySelectorAll<HTMLElement>(
+    "[data-auth-open]",
+  )) {
+    button.addEventListener("click", () =>
+      openDialog(button.dataset.authOpen as "login" | "register"),
+    );
+  }
+
+  for (const button of document.querySelectorAll<HTMLElement>(
+    "[data-auth-tab]",
+  )) {
+    button.addEventListener("click", () =>
+      selectTab(button.dataset.authTab as "login" | "register"),
+    );
+  }
+
+  document
+    .getElementById("auth-close")
+    ?.addEventListener("click", () => dialog.close());
+
+  // Clicking the backdrop lands on the dialog itself rather than its contents.
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+
+  logoutButton.addEventListener("click", () => writeSession(null));
+
+  // The rest of the page asks for the dialog, or reports a token the API has
+  // stopped accepting, through these instead of reaching into this component.
+  addEventListener("chronicles:auth", (event) =>
+    openDialog((event as CustomEvent).detail?.tab ?? "login"),
+  );
+  addEventListener("chronicles:signout", () => writeSession(null));
+
+  const stored = readSession();
+  paintMenu(stored);
+
+  // #login and #register open the dialog straight away, so anything on the site
+  // can link someone into the right form.
+  function openFromHash() {
+    const tab = location.hash.replace("#", "");
+    if (!readSession() && (tab === "login" || tab === "register"))
+      openDialog(tab);
+  }
+
+  addEventListener("hashchange", openFromHash);
+  openFromHash();
+
+  // A stored token can still have been revoked with its account, so it is only
+  // trusted once /auth/me has answered for it.
+  if (stored) {
+    fetch(`${api}/auth/me`, {
+      headers: { Authorization: `Bearer ${stored.token}` },
+    })
+      .then((response) => {
+        if (response.status === 401) writeSession(null);
+      })
+      .catch(() => {
+        /* the API being down is not a reason to sign anybody out */
+      });
+  }
+</script>

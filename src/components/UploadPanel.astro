@@ -1,22 +1,55 @@
 ---
-// Posts the document straight to the chronicles API. The base URL is baked in
-// at build time so the panel works against a local backend by default and
-// against a deployed one by setting PUBLIC_API_URL.
+// Sends the document to the chronicles API. Uploading needs an account, and the
+// API answers as soon as the file is stored with status "processing", so the
+// panel then polls the event until it turns "ready" or "failed".
 const apiBase = (
-  import.meta.env.PUBLIC_API_URL ?? "http://localhost:8000"
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:59800"
 ).replace(/\/$/, "");
 ---
 
 <div
   id="upload-panel"
-  data-endpoint={`${apiBase}/historical-events`}
-  class="mx-auto w-full max-w-2xl"
+  data-api={apiBase}
+  class="mx-auto w-full max-w-2xl text-center"
 >
-  <form id="upload-form" class="group">
+  {/* Shown until somebody is signed in: uploading is tied to an account. */}
+  <div
+    id="upload-locked"
+    class="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-brass/70 bg-leather/30 px-6 py-12"
+  >
+    <span
+      class="flex h-14 w-14 items-center justify-center rounded-full border-2 border-brass bg-ink/60 text-2xl text-gold"
+    >
+      🔑
+    </span>
+    <span class="text-lg font-bold text-gold">An account keeps it yours</span>
+    <span class="max-w-sm text-sm text-parchment/70">
+      Histories are filed under the person who sent them, so you can come back
+      to yours later. It takes a moment to register.
+    </span>
+    <div class="mt-2 flex flex-wrap items-center justify-center gap-3">
+      <button
+        id="upload-register"
+        type="button"
+        class="rounded-full border-2 border-brass bg-gold px-5 py-2 text-sm font-bold text-leather transition-colors hover:bg-parchment"
+      >
+        Create an account
+      </button>
+      <button
+        id="upload-login"
+        type="button"
+        class="rounded-full border-2 border-brass px-5 py-2 text-sm font-bold text-gold transition-colors hover:bg-leather"
+      >
+        I already have one
+      </button>
+    </div>
+  </div>
+
+  <form id="upload-form" class="group hidden">
     <label
       id="upload-drop"
       for="upload-input"
-      class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-brass bg-leather/40 px-6 py-12 text-center transition-colors hover:border-gold hover:bg-leather/70 focus-within:border-gold"
+      class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-brass bg-leather/40 px-6 py-12 text-center transition-colors focus-within:border-gold hover:border-gold hover:bg-leather/70"
     >
       <span
         class="flex h-14 w-14 items-center justify-center rounded-full border-2 border-brass bg-ink/60 text-2xl text-gold"
@@ -34,14 +67,12 @@ const apiBase = (
       >
         Choose a file
       </span>
-      <span class="text-xs text-parchment/50"
-        >.pdf · .doc · .docx · up to 25 MB</span
-      >
+      <span class="text-xs text-parchment/50">.pdf · .docx · up to 25 MB</span>
       <input
         id="upload-input"
         type="file"
         name="file"
-        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         class="sr-only"
       />
     </label>
@@ -52,7 +83,7 @@ const apiBase = (
     id="upload-status"
     role="status"
     aria-live="polite"
-    class="mt-4 hidden rounded-xl border-2 border-brass bg-leather/60 px-5 py-4"
+    class="mt-4 hidden rounded-xl border-2 border-brass bg-leather/60 px-5 py-4 text-left"
   >
     <p id="upload-message" class="text-sm text-parchment"></p>
     <div
@@ -88,7 +119,10 @@ const apiBase = (
 
 <script>
   const panel = document.getElementById("upload-panel") as HTMLElement;
-  const endpoint = panel.dataset.endpoint!;
+  const api = panel.dataset.api!;
+  const endpoint = `${api}/historical-events`;
+
+  const locked = document.getElementById("upload-locked") as HTMLElement;
   const form = document.getElementById("upload-form") as HTMLFormElement;
   const drop = document.getElementById("upload-drop") as HTMLLabelElement;
   const input = document.getElementById("upload-input") as HTMLInputElement;
@@ -103,8 +137,32 @@ const apiBase = (
   const again = document.getElementById("upload-again") as HTMLButtonElement;
 
   const MAX_BYTES = 25 * 1024 * 1024;
-  const ALLOWED = [".pdf", ".doc", ".docx"];
+  const ALLOWED = [".pdf", ".docx"];
   const DRAG_CLASS = ["border-gold", "bg-leather/80"];
+
+  // Reading the document and asking the model for its timeline takes a while,
+  // so the poll is patient before it gives up and tells the user to come back.
+  const POLL_EVERY_MS = 2500;
+  const POLL_FOR_MS = 4 * 60 * 1000;
+
+  function token(): string | null {
+    try {
+      const session = JSON.parse(
+        localStorage.getItem("chronicles.session") ?? "null",
+      );
+      if (!session?.token || session.expiresAt <= Date.now()) return null;
+      return session.token as string;
+    } catch {
+      return null;
+    }
+  }
+
+  function paintLock() {
+    const signedIn = Boolean(token());
+    locked.classList.toggle("hidden", signedIn);
+    locked.classList.toggle("flex", !signedIn);
+    form.classList.toggle("hidden", !signedIn);
+  }
 
   function show(text: string, tone: "busy" | "done" | "error") {
     status.classList.remove("hidden");
@@ -121,11 +179,98 @@ const apiBase = (
     input.value = "";
   }
 
+  function expired() {
+    reject("Your session has expired. Sign in again to send this document.");
+    dispatchEvent(new CustomEvent("chronicles:signout"));
+    dispatchEvent(
+      new CustomEvent("chronicles:auth", { detail: { tab: "login" } }),
+    );
+  }
+
+  function detailOf(text: string, fallback: string): string {
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed?.detail === "string") return parsed.detail;
+      if (Array.isArray(parsed?.detail) && parsed.detail.length) {
+        return parsed.detail
+          .map((item: any) => item?.msg ?? "Invalid value")
+          .join(". ");
+      }
+    } catch {
+      /* not json, keep the fallback */
+    }
+    return fallback;
+  }
+
+  function absolute(url: string): string {
+    return url?.startsWith("http") ? url : `${new URL(api).origin}${url ?? ""}`;
+  }
+
+  function finish(event: any) {
+    const count = event.events?.length ?? 0;
+    show(
+      count > 0
+        ? `Read. ${count} event${count === 1 ? "" : "s"} were pulled out of your document and added to the archive.`
+        : "Read, but no dated events were found in this document. Try one with years and places in the text.",
+      "done",
+    );
+    fileLink.href = absolute(event.file_url);
+    fileLink.classList.toggle("hidden", !event.file_url);
+    input.value = "";
+  }
+
+  // The API stores the file, then reads it in the background. Until it settles
+  // on "ready" or "failed" the panel keeps asking.
+  async function poll(id: string, startedAt: number) {
+    const access = token();
+    if (!access) return expired();
+
+    const response = await fetch(`${endpoint}/${id}`, {
+      headers: { Authorization: `Bearer ${access}` },
+    });
+    if (response.status === 401) return expired();
+    if (!response.ok) {
+      return reject(
+        detailOf(
+          await response.text(),
+          `Could not read the state of your document (${response.status}).`,
+        ),
+      );
+    }
+
+    const event = await response.json();
+    if (event.status === "ready") return finish(event);
+    if (event.status === "failed") {
+      return reject(
+        event.error ?? "The document could not be read. Try another file.",
+      );
+    }
+
+    if (Date.now() - startedAt > POLL_FOR_MS) {
+      return show(
+        "Still reading your document. It is safely stored — come back in a few minutes to see its timeline.",
+        "done",
+      );
+    }
+    setTimeout(() => poll(id, startedAt).catch(onNetworkError), POLL_EVERY_MS);
+  }
+
+  function onNetworkError() {
+    reject(
+      `Could not reach the chronicles service at ${new URL(api).origin}. Start the backend and try again.`,
+    );
+  }
+
   function upload(file: File) {
+    const access = token();
+    if (!access) return expired();
+
     const name = file.name.toLowerCase();
     if (!ALLOWED.some((ext) => name.endsWith(ext))) {
       return reject(
-        "That file type is not supported yet — send a PDF or a Word document.",
+        name.endsWith(".doc")
+          ? "The old .doc format cannot be read. Save it as .docx or PDF and send it again."
+          : "That file type is not supported — send a PDF or a .docx document.",
       );
     }
     if (file.size > MAX_BYTES) {
@@ -137,6 +282,7 @@ const apiBase = (
 
     const request = new XMLHttpRequest();
     request.open("POST", endpoint);
+    request.setRequestHeader("Authorization", `Bearer ${access}`);
 
     request.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable) return;
@@ -144,39 +290,33 @@ const apiBase = (
     });
 
     request.addEventListener("load", () => {
+      if (request.status === 401) return expired();
       if (request.status < 200 || request.status >= 300) {
-        let detail = `The chronicler refused the document (${request.status}).`;
-        try {
-          const parsed = JSON.parse(request.responseText);
-          if (parsed?.detail) detail = String(parsed.detail);
-        } catch {
-          /* keep the generic message */
-        }
-        return reject(detail);
+        return reject(
+          detailOf(
+            request.responseText,
+            `The chronicler refused the document (${request.status}).`,
+          ),
+        );
       }
 
-      const data = JSON.parse(request.responseText);
-      const count = Array.isArray(data.events)
-        ? data.events.length
-        : Object.keys(data.events ?? {}).length;
+      const event = JSON.parse(request.responseText);
+      if (event.status === "ready") return finish(event);
+      if (event.status === "failed") {
+        return reject(
+          event.error ?? "The document could not be read. Try another file.",
+        );
+      }
+
       show(
-        count > 0
-          ? `Received. ${count} event${count === 1 ? "" : "s"} were read out of your document and added to the archive.`
-          : "Received. Your document is in the archive and its events are being read out now.",
-        "done",
+        "Stored. Reading it now and pulling out the events — this can take a minute.",
+        "busy",
       );
-      fileLink.href = data.file_url?.startsWith("http")
-        ? data.file_url
-        : `${new URL(endpoint).origin}${data.file_url ?? ""}`;
-      fileLink.classList.toggle("hidden", !data.file_url);
-      input.value = "";
+      bar.style.width = "100%";
+      poll(event.id, Date.now()).catch(onNetworkError);
     });
 
-    request.addEventListener("error", () =>
-      reject(
-        `Could not reach the chronicles service at ${new URL(endpoint).origin}. Start the backend and try again.`,
-      ),
-    );
+    request.addEventListener("error", onNetworkError);
 
     bar.style.width = "0%";
     show(`Sending “${file.name}”…`, "busy");
@@ -209,4 +349,22 @@ const apiBase = (
     status.classList.add("hidden");
     input.click();
   });
+
+  document
+    .getElementById("upload-register")
+    ?.addEventListener("click", () =>
+      dispatchEvent(
+        new CustomEvent("chronicles:auth", { detail: { tab: "register" } }),
+      ),
+    );
+  document
+    .getElementById("upload-login")
+    ?.addEventListener("click", () =>
+      dispatchEvent(
+        new CustomEvent("chronicles:auth", { detail: { tab: "login" } }),
+      ),
+    );
+
+  addEventListener("chronicles:session", paintLock);
+  paintLock();
 </script>

@@ -1,5 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import AuthMenu from "../components/AuthMenu.astro";
 import MapPreview from "../components/MapPreview.astro";
 import UploadPanel from "../components/UploadPanel.astro";
 import heroBackground from "../assets/pirate-background.webp";
@@ -141,10 +142,12 @@ const STEPS = [
         </a>
         <a
           href="#upload"
-          class="rounded-full border-2 border-brass bg-gold px-4 py-1.5 text-sm font-bold text-leather transition-colors hover:bg-parchment"
+          class="hidden rounded-full border-2 border-brass bg-gold px-4 py-1.5 text-sm font-bold text-leather transition-colors hover:bg-parchment sm:block"
         >
           Upload a history
         </a>
+        <span class="hidden h-5 w-px bg-brass/40 sm:block"></span>
+        <AuthMenu />
       </div>
     </nav>
   </header>
