@@ -217,6 +217,12 @@ const apiBase = (
     fileLink.href = absolute(event.file_url);
     fileLink.classList.toggle("hidden", !event.file_url);
     input.value = "";
+    announce(event);
+  }
+
+  // Any listing of the reader's own histories can refresh itself off these.
+  function announce(event: unknown) {
+    dispatchEvent(new CustomEvent("chronicles:uploaded", { detail: event }));
   }
 
   // The API stores the file, then reads it in the background. Until it settles
@@ -313,6 +319,7 @@ const apiBase = (
         "busy",
       );
       bar.style.width = "100%";
+      announce(event); // it is already in the archive, listed as processing
       poll(event.id, Date.now()).catch(onNetworkError);
     });
 

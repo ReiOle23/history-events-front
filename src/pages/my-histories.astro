@@ -1,0 +1,418 @@
+---
+import Layout from "../layouts/Layout.astro";
+import AuthMenu from "../components/AuthMenu.astro";
+import UploadPanel from "../components/UploadPanel.astro";
+
+// Everything here belongs to whoever is signed in, so the page ships empty and
+// fills itself in from the API once it has a token.
+const apiBase = (
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:59800"
+).replace(/\/$/, "");
+---
+
+<Layout
+  title="Your histories · Chronicles"
+  description="Send documents to the archive and follow the chronicles they become."
+>
+  <header class="border-b border-brass/25 bg-ink/80 backdrop-blur">
+    <nav class="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
+      <a href="/" class="flex items-center gap-2 text-lg font-bold text-gold">
+        <span class="text-xl">🧭</span>
+        Chronicles
+      </a>
+      <div class="flex items-center gap-3 sm:gap-5">
+        <a
+          href="/#chronicles"
+          class="hidden text-sm text-parchment/70 transition-colors hover:text-gold sm:block"
+        >
+          Explore the archive
+        </a>
+        {/* Already here — signing in should not bounce the page. */}
+        <AuthMenu redirectTo="" />
+      </div>
+    </nav>
+  </header>
+
+  <main id="library" data-api={apiBase} class="mx-auto max-w-5xl px-5 py-12">
+    {/* Signed out: nothing to show until we know whose histories these are. */}
+    <section
+      id="library-locked"
+      class="mx-auto max-w-md rounded-2xl border-2 border-dashed border-brass/70 bg-leather/30 px-6 py-14 text-center"
+    >
+      <span
+        class="mx-auto flex h-14 w-14 items-center justify-center rounded-full border-2 border-brass bg-ink/60 text-2xl text-gold"
+      >
+        🔑
+      </span>
+      <h1 class="mt-4 text-2xl font-bold text-gold">Sign in to your archive</h1>
+      <p class="mt-2 text-sm text-parchment/70">
+        Your histories are filed under your account. Sign in to send new
+        documents and follow the ones you have already sent.
+      </p>
+      <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
+        <button
+          id="library-login"
+          type="button"
+          class="rounded-full border-2 border-brass bg-gold px-5 py-2 text-sm font-bold text-leather transition-colors hover:bg-parchment"
+        >
+          Log in
+        </button>
+        <button
+          id="library-register"
+          type="button"
+          class="rounded-full border-2 border-brass px-5 py-2 text-sm font-bold text-gold transition-colors hover:bg-leather"
+        >
+          Create an account
+        </button>
+      </div>
+    </section>
+
+    <div id="library-content" class="hidden">
+      <div class="text-center">
+        <h1 class="text-3xl font-bold text-parchment sm:text-4xl">
+          Welcome back, <span id="library-name" class="text-gold"></span>
+        </h1>
+        <p class="mx-auto mt-3 max-w-xl text-parchment/70">
+          Send a document and it joins the archive as a chronicle. Everything
+          you have sent is listed below, with what came out of it.
+        </p>
+      </div>
+
+      <section class="mt-10">
+        <UploadPanel />
+      </section>
+
+      <section class="mt-16">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 class="text-2xl font-bold text-gold">Your histories</h2>
+            <p id="library-count" class="mt-1 text-sm text-parchment/55"></p>
+          </div>
+          <button
+            id="library-refresh"
+            type="button"
+            class="rounded-full border-2 border-brass px-4 py-1.5 text-sm font-bold text-gold transition-colors hover:bg-leather disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
+
+        <p
+          id="library-error"
+          role="alert"
+          class="mt-4 hidden rounded-lg border border-red-400/40 bg-red-950/40 px-4 py-3 text-sm text-red-200"
+        >
+        </p>
+
+        <p id="library-loading" class="mt-6 text-sm text-parchment/55">
+          Reading your archive…
+        </p>
+
+        <div
+          id="library-empty"
+          class="mt-6 hidden rounded-2xl border-2 border-dashed border-brass/50 px-6 py-12 text-center"
+        >
+          <p class="text-lg font-bold text-gold">Nothing filed yet</p>
+          <p class="mx-auto mt-2 max-w-sm text-sm text-parchment/60">
+            The first document you send appears here, with the events we read
+            out of it.
+          </p>
+        </div>
+
+        <ul id="library-list" class="mt-6 space-y-4"></ul>
+      </section>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  interface TimelineEvent {
+    year: number;
+    text: string;
+  }
+
+  interface HistoryEntry {
+    id: string;
+    created_date: string;
+    status: "processing" | "ready" | "failed";
+    error: string | null;
+    events: TimelineEvent[];
+    file_url: string;
+  }
+
+  const root = document.getElementById("library") as HTMLElement;
+  const api = root.dataset.api!;
+  const endpoint = `${api}/historical-events`;
+
+  const locked = document.getElementById("library-locked") as HTMLElement;
+  const content = document.getElementById("library-content") as HTMLElement;
+  const nameEl = document.getElementById("library-name") as HTMLElement;
+  const listEl = document.getElementById("library-list") as HTMLElement;
+  const countEl = document.getElementById("library-count") as HTMLElement;
+  const emptyEl = document.getElementById("library-empty") as HTMLElement;
+  const loadingEl = document.getElementById("library-loading") as HTMLElement;
+  const errorEl = document.getElementById("library-error") as HTMLElement;
+  const refreshButton = document.getElementById(
+    "library-refresh",
+  ) as HTMLButtonElement;
+
+  // While anything is still being read, the list keeps checking back so the
+  // badge turns over without a manual refresh.
+  const REFRESH_WHILE_PROCESSING_MS = 4000;
+  let timer = 0;
+
+  function session() {
+    try {
+      const value = JSON.parse(
+        localStorage.getItem("chronicles.session") ?? "null",
+      );
+      if (!value?.token || value.expiresAt <= Date.now()) return null;
+      return value as { token: string; user: { username: string } };
+    } catch {
+      return null;
+    }
+  }
+
+  const formatYear = (year: number) =>
+    year < 0 ? `${Math.abs(year)} BCE` : `${year} CE`;
+
+  const formatDate = (value: string) =>
+    new Date(value).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+  const fileName = (url: string) =>
+    decodeURIComponent((url ?? "").split("/").pop() ?? "") || "document";
+
+  const absolute = (url: string) =>
+    url?.startsWith("http") ? url : `${new URL(api).origin}${url ?? ""}`;
+
+  const BADGES = {
+    processing: {
+      label: "Being read",
+      class: "border-amber-400/40 bg-amber-500/10 text-amber-200",
+    },
+    ready: {
+      label: "Ready",
+      class: "border-gold/50 bg-gold/10 text-gold",
+    },
+    failed: {
+      label: "Could not be read",
+      class: "border-red-400/40 bg-red-500/10 text-red-200",
+    },
+  };
+
+  function badge(status: HistoryEntry["status"]) {
+    const spec = BADGES[status] ?? BADGES.processing;
+    const element = document.createElement("span");
+    element.className = `shrink-0 rounded-full border px-3 py-1 text-xs font-bold ${spec.class}`;
+    element.textContent = spec.label;
+    return element;
+  }
+
+  function line(text: string, className: string) {
+    const element = document.createElement("p");
+    element.className = className;
+    element.textContent = text;
+    return element;
+  }
+
+  function summarize(entry: HistoryEntry): string {
+    if (entry.status === "processing") {
+      return "Reading the document and pulling out its events…";
+    }
+    if (entry.status === "failed") {
+      return entry.error ?? "The document could not be read.";
+    }
+    if (!entry.events.length) {
+      return "No dated events were found in this document.";
+    }
+    const years = entry.events.map((event) => event.year);
+    const span = `${formatYear(Math.min(...years))} – ${formatYear(Math.max(...years))}`;
+    return `${entry.events.length} event${entry.events.length === 1 ? "" : "s"} · ${span}`;
+  }
+
+  function card(entry: HistoryEntry) {
+    const item = document.createElement("li");
+    item.className =
+      "rounded-2xl border-2 border-brass/50 bg-leather/40 p-5 transition-colors hover:border-gold";
+
+    const head = document.createElement("div");
+    head.className = "flex flex-wrap items-start justify-between gap-3";
+    const title = document.createElement("h3");
+    title.className = "font-bold break-all text-gold";
+    title.textContent = fileName(entry.file_url);
+    head.append(title, badge(entry.status));
+
+    const summary = line(
+      summarize(entry),
+      entry.status === "failed"
+        ? "mt-3 text-sm text-red-200/90"
+        : "mt-3 text-sm text-parchment/75",
+    );
+
+    // The first event doubles as a preview of what came out of the document.
+    const preview =
+      entry.status === "ready" && entry.events.length
+        ? line(
+            `“${entry.events[0].text}”`,
+            "mt-2 text-sm text-parchment/50 italic",
+          )
+        : null;
+
+    const foot = document.createElement("div");
+    foot.className =
+      "mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-brass/25 pt-3 text-xs";
+    foot.append(
+      line(`Sent ${formatDate(entry.created_date)}`, "text-parchment/50"),
+    );
+
+    const actions = document.createElement("div");
+    actions.className = "flex items-center gap-4";
+
+    if (entry.file_url) {
+      const link = document.createElement("a");
+      link.href = absolute(entry.file_url);
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.className = "font-bold text-gold hover:text-parchment";
+      link.textContent = "View document →";
+      actions.append(link);
+    }
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "text-parchment/45 transition-colors hover:text-red-300";
+    remove.textContent = "Delete";
+    remove.addEventListener("click", () => destroy(entry, remove));
+    actions.append(remove);
+
+    foot.append(actions);
+    item.append(head, summary);
+    if (preview) item.append(preview);
+    item.append(foot);
+    return item;
+  }
+
+  function showError(text: string) {
+    errorEl.textContent = text;
+    errorEl.classList.remove("hidden");
+  }
+
+  function expired() {
+    dispatchEvent(new CustomEvent("chronicles:signout"));
+    dispatchEvent(
+      new CustomEvent("chronicles:auth", { detail: { tab: "login" } }),
+    );
+  }
+
+  async function destroy(entry: HistoryEntry, button: HTMLButtonElement) {
+    const current = session();
+    if (!current) return expired();
+
+    button.disabled = true;
+    button.textContent = "Deleting…";
+    try {
+      const response = await fetch(`${endpoint}/${entry.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${current.token}` },
+      });
+      if (response.status === 401) return expired();
+      if (!response.ok && response.status !== 404) {
+        throw new Error(
+          `The archive refused to delete it (${response.status}).`,
+        );
+      }
+      await load();
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Delete";
+      showError(
+        error instanceof TypeError
+          ? `Could not reach the chronicles service at ${new URL(api).origin}.`
+          : (error as Error).message,
+      );
+    }
+  }
+
+  async function load() {
+    const current = session();
+    if (!current) return paint();
+
+    errorEl.classList.add("hidden");
+    refreshButton.disabled = true;
+    try {
+      const response = await fetch(`${endpoint}?limit=200&skip=0`, {
+        headers: { Authorization: `Bearer ${current.token}` },
+      });
+      if (response.status === 401) return expired();
+      if (!response.ok) {
+        throw new Error(`Could not read your archive (${response.status}).`);
+      }
+
+      const entries: HistoryEntry[] = await response.json();
+      // Newest first: the thing you just sent should be at the top.
+      entries.sort((a, b) => b.created_date.localeCompare(a.created_date));
+
+      loadingEl.classList.add("hidden");
+      emptyEl.classList.toggle("hidden", entries.length > 0);
+      listEl.replaceChildren(...entries.map(card));
+      countEl.textContent = entries.length
+        ? `${entries.length} document${entries.length === 1 ? "" : "s"} sent`
+        : "";
+
+      window.clearTimeout(timer);
+      if (entries.some((entry) => entry.status === "processing")) {
+        timer = window.setTimeout(load, REFRESH_WHILE_PROCESSING_MS);
+      }
+    } catch (error) {
+      loadingEl.classList.add("hidden");
+      showError(
+        error instanceof TypeError
+          ? `Could not reach the chronicles service at ${new URL(api).origin}. Start the backend and try again.`
+          : (error as Error).message,
+      );
+    } finally {
+      refreshButton.disabled = false;
+    }
+  }
+
+  function paint() {
+    const current = session();
+    locked.classList.toggle("hidden", Boolean(current));
+    content.classList.toggle("hidden", !current);
+    nameEl.textContent = current?.user.username ?? "";
+    if (!current) {
+      window.clearTimeout(timer);
+      listEl.replaceChildren();
+    }
+  }
+
+  refreshButton.addEventListener("click", () => load());
+
+  document
+    .getElementById("library-login")
+    ?.addEventListener("click", () =>
+      dispatchEvent(
+        new CustomEvent("chronicles:auth", { detail: { tab: "login" } }),
+      ),
+    );
+  document
+    .getElementById("library-register")
+    ?.addEventListener("click", () =>
+      dispatchEvent(
+        new CustomEvent("chronicles:auth", { detail: { tab: "register" } }),
+      ),
+    );
+
+  addEventListener("chronicles:session", () => {
+    paint();
+    load();
+  });
+  addEventListener("chronicles:uploaded", () => load());
+
+  paint();
+  load();
+</script>

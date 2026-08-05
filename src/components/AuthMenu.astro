@@ -7,6 +7,17 @@ const apiBase = (
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:59800"
 ).replace(/\/$/, "");
 
+interface Props {
+  /** Where to send someone once they are signed in. "" stays put. */
+  redirectTo?: string;
+}
+
+const { redirectTo = "/my-histories" } = Astro.props;
+
+// No point offering a link to the page you are already standing on.
+const showLibraryLink =
+  Astro.url.pathname.replace(/\/$/, "") !== "/my-histories";
+
 const FIELD_CLASS =
   "w-full rounded-lg border-2 border-brass/60 bg-ink/60 px-3 py-2 text-sm text-parchment outline-none transition-colors placeholder:text-parchment/35 focus:border-gold";
 const LABEL_CLASS = "block text-xs uppercase tracking-widest text-parchment/60";
@@ -16,7 +27,12 @@ const ALERT_CLASS =
   "hidden rounded-lg border border-red-400/40 bg-red-950/40 px-3 py-2 text-sm text-red-200";
 ---
 
-<div id="auth-menu" data-api={apiBase} class="flex items-center gap-2 sm:gap-3">
+<div
+  id="auth-menu"
+  data-api={apiBase}
+  data-redirect={redirectTo}
+  class="flex items-center gap-2 sm:gap-3"
+>
   {
     /* Signed out. Rendered by default so the controls are there even if the
   script never runs; the signed-in state is swapped in once a session is read. */
@@ -39,8 +55,18 @@ const ALERT_CLASS =
   </div>
 
   <div id="auth-user" class="hidden items-center gap-3">
+    {
+      showLibraryLink && (
+        <a
+          href="/my-histories"
+          class="text-sm text-parchment/70 transition-colors hover:text-gold"
+        >
+          Your histories
+        </a>
+      )
+    }
     <span class="hidden text-sm text-parchment/70 sm:inline">
-      Signed in as <span id="auth-username" class="font-bold text-gold"></span>
+      <span id="auth-username" class="font-bold text-gold"></span>
     </span>
     <button
       id="auth-logout"
@@ -215,6 +241,7 @@ const ALERT_CLASS =
 
   const menu = document.getElementById("auth-menu") as HTMLElement;
   const api = menu.dataset.api!;
+  const redirectTo = menu.dataset.redirect ?? "";
   const STORAGE_KEY = "chronicles.session";
 
   const guestEl = document.getElementById("auth-guest") as HTMLElement;
@@ -380,6 +407,11 @@ const ALERT_CLASS =
       writeSession(await run(values));
       form.reset();
       dialog.close();
+      // Signing in lands on the page where your own histories live, unless you
+      // are already standing on it.
+      if (redirectTo && location.pathname !== redirectTo) {
+        location.href = redirectTo;
+      }
     } catch (error) {
       showError(
         errorEl,
