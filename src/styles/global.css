@@ -1,1 +1,77 @@
-@import 'tailwindcss';
+@import "tailwindcss";
+
+/* The site reads as an old chart room: inked leather, brass and lamplight on
+   parchment. These are the same values the three.js scene paints with, so the
+   page and the map feel like one surface. */
+@theme {
+  --color-ink: #140c06;
+  --color-leather: #2a1608;
+  --color-bark: #4a2c14;
+  --color-brass: #9c7a24;
+  --color-gold: #c9a13b;
+  --color-parchment: #e8d9b5;
+
+  --font-serif:
+    "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia,
+    serif;
+
+  --animate-ring: ring 2s ease-out infinite;
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-march: march 1.4s linear infinite;
+  --animate-drift: drift 48s ease-in-out infinite alternate;
+  --animate-sheen: sheen 7s ease-in-out infinite;
+  --animate-compass: compass 26s linear infinite;
+
+  @keyframes ring {
+    from {
+      opacity: 0.65;
+      transform: scale(0.55);
+    }
+    to {
+      opacity: 0;
+      transform: scale(2.4);
+    }
+  }
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  /* Marching dashes, the way a route is traced across a chart. */
+  @keyframes march {
+    to {
+      stroke-dashoffset: -8;
+    }
+  }
+
+  @keyframes drift {
+    from {
+      transform: scale(1.08) translate3d(-1.5%, 0, 0);
+    }
+    to {
+      transform: scale(1.14) translate3d(1.5%, -1%, 0);
+    }
+  }
+
+  @keyframes sheen {
+    0%,
+    100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  @keyframes compass {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}

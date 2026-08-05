@@ -1,11 +1,481 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+import Layout from "../layouts/Layout.astro";
+import MapPreview from "../components/MapPreview.astro";
+import UploadPanel from "../components/UploadPanel.astro";
+import heroBackground from "../assets/pirate-background.webp";
+import pirateEvents from "../features/three-map/data/events.json";
+import romeEvents from "../features/three-map/data/events-rome.json";
+import persiaEvents from "../features/three-map/data/events-persia.json";
+import chinaEvents from "../features/three-map/data/events-china.json";
+import conquestEvents from "../features/three-map/data/events-spanish-conquest.json";
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+interface HistoryEvent {
+  year: number;
+  age: string;
+}
+
+const CHRONICLES: {
+  label: string;
+  href: string;
+  blurb: string;
+  events: HistoryEvent[];
+}[] = [
+  {
+    label: "Rome",
+    href: "/rome",
+    blurb: "From Romulus to Odoacer — a republic, an empire and its long fall.",
+    events: romeEvents,
+  },
+  {
+    label: "Persia",
+    href: "/persia",
+    blurb:
+      "The Achaemenid road: Cyrus, Darius and the wars with the Greek cities.",
+    events: persiaEvents,
+  },
+  {
+    label: "China",
+    href: "/china",
+    blurb: "Dynasties in succession, walls raised and the long silk road east.",
+    events: chinaEvents,
+  },
+  {
+    label: "La Conquista",
+    href: "/conquest",
+    blurb:
+      "Granada to Cuzco, followed crossing by crossing across the Atlantic.",
+    events: conquestEvents,
+  },
+  {
+    label: "Pirates of the Caribbean",
+    href: "/map",
+    blurb:
+      "A fictional chronicle — proof that invented histories map just as well.",
+    events: pirateEvents,
+  },
+];
+
+const formatYear = (year: number) =>
+  year < 0 ? `${Math.abs(year)} BCE` : `${year} CE`;
+
+const chronicleCards = CHRONICLES.map((entry) => {
+  const years = entry.events.map((event) => event.year);
+  return {
+    ...entry,
+    count: entry.events.length,
+    span: `${formatYear(Math.min(...years))} – ${formatYear(Math.max(...years))}`,
+    ages: [...new Set(entry.events.map((event) => event.age))].length,
+  };
+});
+
+const totalEvents = chronicleCards.reduce((sum, entry) => sum + entry.count, 0);
+const totalAges = new Set(
+  CHRONICLES.flatMap((entry) => entry.events.map((event) => event.age)),
+).size;
+
+const FEATURES = [
+  {
+    icon: "🗺️",
+    title: "Era-accurate charts",
+    body: "Each event carries its age, and the sheet under it changes to match — the ancient world, the medieval one, the early modern one.",
+  },
+  {
+    icon: "🎬",
+    title: "Scenes that move",
+    body: "Battles, foundings, storms and truces mount a short clip right on the pin, so the map plays rather than just marks.",
+  },
+  {
+    icon: "🧭",
+    title: "A timeline you walk",
+    body: "Step year by year and the camera travels with you across a 3D chart you can orbit, tilt and zoom.",
+  },
+];
+
+const STEPS = [
+  {
+    title: "Send a document",
+    body: "A PDF or Word file: a chapter, an essay, a set of notes, a story you invented. Nothing to format first.",
+  },
+  {
+    title: "We read out the events",
+    body: "Dates, places and people are pulled from the text and turned into pinned events on the chart.",
+  },
+  {
+    title: "It becomes a chronicle",
+    body: "Your history joins the archive as a map anyone can walk through, one year at a time.",
+  },
+];
 ---
 
 <Layout>
-	<Welcome />
+  {/* Reading progress, drawn along the top edge of the page. */}
+  <div
+    id="scroll-progress"
+    class="fixed inset-x-0 top-0 z-50 h-0.5 w-full origin-left scale-x-0 bg-gradient-to-r from-brass via-gold to-parchment"
+  >
+  </div>
+
+  <header
+    id="site-header"
+    class="fixed inset-x-0 top-0 z-40 border-b border-transparent transition-all duration-300"
+  >
+    <nav class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+      <a href="/" class="flex items-center gap-2 text-lg font-bold text-gold">
+        <span class="animate-compass text-xl motion-reduce:animate-none"
+          >🧭</span
+        >
+        Chronicles
+      </a>
+      <div class="flex items-center gap-2 sm:gap-5">
+        <a
+          href="#chronicles"
+          class="hidden text-sm text-parchment/70 transition-colors hover:text-gold sm:block"
+        >
+          The archive
+        </a>
+        <a
+          href="#how"
+          class="hidden text-sm text-parchment/70 transition-colors hover:text-gold sm:block"
+        >
+          How it works
+        </a>
+        <a
+          href="#upload"
+          class="rounded-full border-2 border-brass bg-gold px-4 py-1.5 text-sm font-bold text-leather transition-colors hover:bg-parchment"
+        >
+          Upload a history
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    {/* ── Hero ─────────────────────────────────────────────────────────── */}
+    <section class="relative overflow-hidden px-5 pb-16 pt-28 sm:pt-32">
+      <img
+        src={heroBackground.src}
+        alt=""
+        aria-hidden="true"
+        class="animate-drift pointer-events-none absolute inset-0 h-full w-full object-cover opacity-25 motion-reduce:animate-none"
+      />
+      <div
+        class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,rgba(74,44,20,0.55),transparent_60%)]"
+      >
+      </div>
+      <div
+        class="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink/80 via-ink/70 to-ink"
+      >
+      </div>
+
+      <div class="relative mx-auto max-w-3xl text-center">
+        <p
+          data-reveal
+          class="text-xs uppercase tracking-[0.35em] text-gold/80 transition-all duration-700"
+        >
+          History, drawn on the map
+        </p>
+        <h1
+          data-reveal
+          class="animate-sheen mt-5 bg-gradient-to-r from-parchment via-gold to-parchment bg-[length:220%_auto] bg-clip-text text-4xl font-bold leading-tight text-transparent transition-all duration-700 motion-reduce:animate-none sm:text-6xl"
+        >
+          Every history deserves a map
+        </h1>
+        <p
+          data-reveal
+          class="mx-auto mt-6 max-w-xl text-base leading-relaxed text-parchment/80 transition-all duration-700 sm:text-lg [text-wrap:balance]"
+        >
+          Send a document and watch it turn into a chronicle: every event pinned
+          to the chart of its own age, walked year by year, with the battles and
+          foundings playing where they happened.
+        </p>
+
+        <div
+          data-reveal
+          class="mt-9 flex flex-wrap items-center justify-center gap-3 transition-all duration-700"
+        >
+          <a
+            href="/rome"
+            class="rounded-full border-2 border-brass bg-gold px-7 py-3 font-bold text-leather shadow-[0_10px_30px_-10px_rgba(201,161,59,0.8)] transition-transform hover:scale-105"
+          >
+            Open a chronicle
+          </a>
+          <a
+            href="#upload"
+            class="rounded-full border-2 border-brass bg-leather/70 px-7 py-3 font-bold text-gold transition-colors hover:bg-bark"
+          >
+            Upload your history
+          </a>
+        </div>
+
+        <dl
+          data-reveal
+          class="mx-auto mt-10 flex max-w-lg justify-center gap-8 transition-all duration-700 sm:gap-14"
+        >
+          {
+            [
+              { value: chronicleCards.length, label: "chronicles" },
+              { value: totalEvents, label: "events pinned" },
+              { value: totalAges, label: "ages charted" },
+            ].map((stat) => (
+              <div class="text-center">
+                <dt class="text-3xl font-bold text-gold sm:text-4xl">
+                  {stat.value}
+                </dt>
+                <dd class="mt-1 text-xs uppercase tracking-widest text-parchment/50">
+                  {stat.label}
+                </dd>
+              </div>
+            ))
+          }
+        </dl>
+      </div>
+
+      <div data-reveal class="relative mt-12 px-1 transition-all duration-1000">
+        <MapPreview />
+      </div>
+    </section>
+
+    {/* ── What the map does ────────────────────────────────────────────── */}
+    <section class="border-t border-brass/20 px-5 py-24">
+      <div class="mx-auto max-w-6xl">
+        <h2
+          data-reveal
+          class="max-w-2xl text-3xl font-bold text-parchment transition-all duration-700 sm:text-4xl"
+        >
+          Not a list of dates. A chart you can walk across.
+        </h2>
+        <div class="mt-12 grid gap-6 sm:grid-cols-3">
+          {
+            FEATURES.map((feature) => (
+              <article
+                data-reveal
+                class="rounded-2xl border-2 border-brass/50 bg-leather/40 p-7 transition-all duration-700 hover:border-gold hover:bg-leather/70"
+              >
+                <span class="text-3xl">{feature.icon}</span>
+                <h3 class="mt-4 text-xl font-bold text-gold">
+                  {feature.title}
+                </h3>
+                <p class="mt-3 text-sm leading-relaxed text-parchment/75">
+                  {feature.body}
+                </p>
+              </article>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    {/* ── The archive ──────────────────────────────────────────────────── */}
+    <section
+      id="chronicles"
+      class="scroll-mt-20 border-t border-brass/20 px-5 py-24"
+    >
+      <div class="mx-auto max-w-6xl">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div data-reveal class="max-w-2xl transition-all duration-700">
+            <p class="text-xs uppercase tracking-[0.3em] text-gold/70">
+              The archive
+            </p>
+            <h2 class="mt-3 text-3xl font-bold text-parchment sm:text-4xl">
+              Histories other people have already charted
+            </h2>
+            <p class="mt-4 text-parchment/70">
+              Every one of these started as a document somebody sent in. Open
+              one and walk it from its first year to its last.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {
+            chronicleCards.map((entry) => (
+              <a
+                data-reveal
+                href={entry.href}
+                class="group flex flex-col justify-between rounded-2xl border-2 border-brass/50 bg-leather/40 p-6 transition-all duration-700 hover:-translate-y-1 hover:border-gold hover:bg-leather/70"
+              >
+                <div>
+                  <div class="flex items-baseline justify-between gap-3">
+                    <h3 class="text-xl font-bold text-gold">{entry.label}</h3>
+                    <span class="shrink-0 rounded-full border border-brass/60 px-2.5 py-0.5 text-xs text-parchment/60">
+                      {entry.count} events
+                    </span>
+                  </div>
+                  <p class="mt-3 text-sm leading-relaxed text-parchment/70">
+                    {entry.blurb}
+                  </p>
+                </div>
+                <div class="mt-6 flex items-center justify-between border-t border-brass/25 pt-4 text-xs">
+                  <span class="text-parchment/50">{entry.span}</span>
+                  <span class="font-bold text-gold transition-transform group-hover:translate-x-1">
+                    Open →
+                  </span>
+                </div>
+              </a>
+            ))
+          }
+
+          <a
+            data-reveal
+            href="#upload"
+            class="group flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-brass/60 p-6 text-center transition-all duration-700 hover:border-gold hover:bg-leather/40"
+          >
+            <span class="text-3xl transition-transform group-hover:scale-110"
+              >✒️</span
+            >
+            <h3 class="text-lg font-bold text-gold">Yours goes here</h3>
+            <p class="text-sm text-parchment/60">
+              The archive grows by one history at a time. The next card on this
+              shelf is whichever document you send.
+            </p>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    {/* ── How it works ─────────────────────────────────────────────────── */}
+    <section id="how" class="scroll-mt-20 border-t border-brass/20 px-5 py-24">
+      <div class="mx-auto max-w-6xl">
+        <h2
+          data-reveal
+          class="max-w-2xl text-3xl font-bold text-parchment transition-all duration-700 sm:text-4xl"
+        >
+          Three steps from a document to a map
+        </h2>
+        <ol class="mt-12 grid gap-6 sm:grid-cols-3">
+          {
+            STEPS.map((step, index) => (
+              <li
+                data-reveal
+                class="relative rounded-2xl border-2 border-brass/40 bg-leather/30 p-7 transition-all duration-700"
+              >
+                <span class="flex h-10 w-10 items-center justify-center rounded-full border-2 border-brass bg-ink text-lg font-bold text-gold">
+                  {index + 1}
+                </span>
+                <h3 class="mt-4 text-xl font-bold text-parchment">
+                  {step.title}
+                </h3>
+                <p class="mt-3 text-sm leading-relaxed text-parchment/70">
+                  {step.body}
+                </p>
+              </li>
+            ))
+          }
+        </ol>
+      </div>
+    </section>
+
+    {/* ── Upload ───────────────────────────────────────────────────────── */}
+    <section
+      id="upload"
+      class="relative scroll-mt-20 overflow-hidden border-t border-brass/20 px-5 py-24"
+    >
+      <div
+        class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_100%,rgba(156,122,36,0.28),transparent_65%)]"
+      >
+      </div>
+
+      <div class="relative mx-auto max-w-3xl text-center">
+        <p
+          data-reveal
+          class="text-xs uppercase tracking-[0.3em] text-gold/80 transition-all duration-700"
+        >
+          Add to the archive
+        </p>
+        <h2
+          data-reveal
+          class="mt-4 text-3xl font-bold text-parchment transition-all duration-700 sm:text-4xl [text-wrap:balance]"
+        >
+          Somebody wrote this history down. Put it on the map.
+        </h2>
+        <p
+          data-reveal
+          class="mx-auto mt-5 max-w-xl leading-relaxed text-parchment/75 transition-all duration-700"
+        >
+          A thesis chapter, the history of a town, a war nobody has charted yet,
+          or a world you invented — if it has dates and places, it can be
+          walked. It takes one file and about a minute.
+        </p>
+
+        <div data-reveal class="mt-10 transition-all duration-700">
+          <UploadPanel />
+        </div>
+
+        <p class="mt-6 text-xs text-parchment/45">
+          Your document stays alongside the chronicle it becomes, so anyone
+          reading it can go back to the source.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-brass/20 px-5 py-10">
+    <div
+      class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 text-sm text-parchment/50"
+    >
+      <span class="flex items-center gap-2 font-bold text-gold"
+        >🧭 Chronicles</span
+      >
+      <div class="flex flex-wrap gap-5">
+        {
+          chronicleCards.map((entry) => (
+            <a href={entry.href} class="transition-colors hover:text-gold">
+              {entry.label}
+            </a>
+          ))
+        }
+      </div>
+    </div>
+  </footer>
 </Layout>
+
+<script>
+  // Sections rise into place the first time they are reached, and the bar at
+  // the top tracks how far down the page you are.
+  //
+  // The hidden state is applied here rather than in the markup: if this script
+  // never runs, the page is simply already in its final state instead of a
+  // screenful of nothing.
+  const revealed = document.querySelectorAll<HTMLElement>("[data-reveal]");
+  const reduceMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+
+  if (!reduceMotion) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const el = entry.target as HTMLElement;
+          el.classList.remove("opacity-0", "translate-y-6");
+          observer.unobserve(el);
+        }
+      },
+      // Threshold 0: the map preview is taller than a laptop viewport, so a
+      // ratio-based trigger would leave it hidden below the fold forever.
+      { threshold: 0, rootMargin: "0px 0px -60px 0px" },
+    );
+
+    // Staggered within a section, so grids resolve card by card.
+    revealed.forEach((el, index) => {
+      el.classList.add("opacity-0", "translate-y-6");
+      el.style.transitionDelay = `${(index % 4) * 90}ms`;
+      observer.observe(el);
+    });
+  }
+
+  const progress = document.getElementById("scroll-progress") as HTMLElement;
+  const header = document.getElementById("site-header") as HTMLElement;
+  const HEADER_SCROLLED = ["border-brass/30", "bg-ink/85", "backdrop-blur"];
+
+  function onScroll() {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    progress.style.transform = `scaleX(${max > 0 ? window.scrollY / max : 0})`;
+    header.classList.toggle(HEADER_SCROLLED[0], window.scrollY > 40);
+    header.classList.toggle(HEADER_SCROLLED[1], window.scrollY > 40);
+    header.classList.toggle(HEADER_SCROLLED[2], window.scrollY > 40);
+  }
+
+  addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+</script>

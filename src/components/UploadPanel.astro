@@ -1,0 +1,212 @@
+---
+// Posts the document straight to the chronicles API. The base URL is baked in
+// at build time so the panel works against a local backend by default and
+// against a deployed one by setting PUBLIC_API_URL.
+const apiBase = (
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:8000"
+).replace(/\/$/, "");
+---
+
+<div
+  id="upload-panel"
+  data-endpoint={`${apiBase}/historical-events`}
+  class="mx-auto w-full max-w-2xl"
+>
+  <form id="upload-form" class="group">
+    <label
+      id="upload-drop"
+      for="upload-input"
+      class="flex cursor-pointer flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-brass bg-leather/40 px-6 py-12 text-center transition-colors hover:border-gold hover:bg-leather/70 focus-within:border-gold"
+    >
+      <span
+        class="flex h-14 w-14 items-center justify-center rounded-full border-2 border-brass bg-ink/60 text-2xl text-gold"
+      >
+        ⚓
+      </span>
+      <span class="text-lg font-bold text-gold">Drop your document here</span>
+      <span class="max-w-sm text-sm text-parchment/70">
+        A PDF or Word file — a thesis chapter, a family history, campaign notes,
+        a chronicle you wrote for class. We read it and pull out the events,
+        dates and places.
+      </span>
+      <span
+        class="mt-1 rounded-full border-2 border-brass bg-gold px-5 py-2 text-sm font-bold text-leather transition-colors group-hover:bg-parchment"
+      >
+        Choose a file
+      </span>
+      <span class="text-xs text-parchment/50"
+        >.pdf · .doc · .docx · up to 25 MB</span
+      >
+      <input
+        id="upload-input"
+        type="file"
+        name="file"
+        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        class="sr-only"
+      />
+    </label>
+  </form>
+
+  {/* One status strip, rewritten as the upload moves through its states. */}
+  <div
+    id="upload-status"
+    role="status"
+    aria-live="polite"
+    class="mt-4 hidden rounded-xl border-2 border-brass bg-leather/60 px-5 py-4"
+  >
+    <p id="upload-message" class="text-sm text-parchment"></p>
+    <div
+      id="upload-track"
+      class="mt-3 hidden h-1.5 w-full overflow-hidden rounded-full bg-ink/70"
+    >
+      <div
+        id="upload-bar"
+        class="h-full w-0 rounded-full bg-gold transition-[width] duration-200"
+      >
+      </div>
+    </div>
+    <div id="upload-actions" class="mt-3 hidden flex-wrap gap-3">
+      <a
+        id="upload-file-link"
+        href="#"
+        target="_blank"
+        rel="noreferrer"
+        class="text-sm font-bold text-gold underline decoration-brass underline-offset-4 hover:text-parchment"
+      >
+        View the document you sent →
+      </a>
+      <button
+        id="upload-again"
+        type="button"
+        class="text-sm font-bold text-gold underline decoration-brass underline-offset-4 hover:text-parchment"
+      >
+        Send another
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const panel = document.getElementById("upload-panel") as HTMLElement;
+  const endpoint = panel.dataset.endpoint!;
+  const form = document.getElementById("upload-form") as HTMLFormElement;
+  const drop = document.getElementById("upload-drop") as HTMLLabelElement;
+  const input = document.getElementById("upload-input") as HTMLInputElement;
+  const status = document.getElementById("upload-status") as HTMLElement;
+  const message = document.getElementById("upload-message") as HTMLElement;
+  const track = document.getElementById("upload-track") as HTMLElement;
+  const bar = document.getElementById("upload-bar") as HTMLElement;
+  const actions = document.getElementById("upload-actions") as HTMLElement;
+  const fileLink = document.getElementById(
+    "upload-file-link",
+  ) as HTMLAnchorElement;
+  const again = document.getElementById("upload-again") as HTMLButtonElement;
+
+  const MAX_BYTES = 25 * 1024 * 1024;
+  const ALLOWED = [".pdf", ".doc", ".docx"];
+  const DRAG_CLASS = ["border-gold", "bg-leather/80"];
+
+  function show(text: string, tone: "busy" | "done" | "error") {
+    status.classList.remove("hidden");
+    message.textContent = text;
+    message.className =
+      tone === "error" ? "text-sm text-red-300" : "text-sm text-parchment";
+    track.classList.toggle("hidden", tone !== "busy");
+    actions.classList.toggle("hidden", tone !== "done");
+    actions.classList.toggle("flex", tone === "done");
+  }
+
+  function reject(text: string) {
+    show(text, "error");
+    input.value = "";
+  }
+
+  function upload(file: File) {
+    const name = file.name.toLowerCase();
+    if (!ALLOWED.some((ext) => name.endsWith(ext))) {
+      return reject(
+        "That file type is not supported yet — send a PDF or a Word document.",
+      );
+    }
+    if (file.size > MAX_BYTES) {
+      return reject("That file is over 25 MB. Try splitting it into chapters.");
+    }
+
+    const body = new FormData();
+    body.append("file", file);
+
+    const request = new XMLHttpRequest();
+    request.open("POST", endpoint);
+
+    request.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) return;
+      bar.style.width = `${Math.round((event.loaded / event.total) * 100)}%`;
+    });
+
+    request.addEventListener("load", () => {
+      if (request.status < 200 || request.status >= 300) {
+        let detail = `The chronicler refused the document (${request.status}).`;
+        try {
+          const parsed = JSON.parse(request.responseText);
+          if (parsed?.detail) detail = String(parsed.detail);
+        } catch {
+          /* keep the generic message */
+        }
+        return reject(detail);
+      }
+
+      const data = JSON.parse(request.responseText);
+      const count = Array.isArray(data.events)
+        ? data.events.length
+        : Object.keys(data.events ?? {}).length;
+      show(
+        count > 0
+          ? `Received. ${count} event${count === 1 ? "" : "s"} were read out of your document and added to the archive.`
+          : "Received. Your document is in the archive and its events are being read out now.",
+        "done",
+      );
+      fileLink.href = data.file_url?.startsWith("http")
+        ? data.file_url
+        : `${new URL(endpoint).origin}${data.file_url ?? ""}`;
+      fileLink.classList.toggle("hidden", !data.file_url);
+      input.value = "";
+    });
+
+    request.addEventListener("error", () =>
+      reject(
+        `Could not reach the chronicles service at ${new URL(endpoint).origin}. Start the backend and try again.`,
+      ),
+    );
+
+    bar.style.width = "0%";
+    show(`Sending “${file.name}”…`, "busy");
+    request.send(body);
+  }
+
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (file) upload(file);
+  });
+
+  form.addEventListener("submit", (event) => event.preventDefault());
+
+  for (const type of ["dragenter", "dragover"]) {
+    drop.addEventListener(type, (event) => {
+      event.preventDefault();
+      drop.classList.add(...DRAG_CLASS);
+    });
+  }
+  for (const type of ["dragleave", "drop"]) {
+    drop.addEventListener(type, () => drop.classList.remove(...DRAG_CLASS));
+  }
+  drop.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const file = (event as DragEvent).dataTransfer?.files?.[0];
+    if (file) upload(file);
+  });
+
+  again.addEventListener("click", () => {
+    status.classList.add("hidden");
+    input.click();
+  });
+</script>

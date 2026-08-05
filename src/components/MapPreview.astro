@@ -1,0 +1,546 @@
+---
+import ancientAgeMap from "../assets/ancient-age.webp";
+import modernAgeMap from "../assets/modern-age.webp";
+import battleVideoUrl from "../assets/battle.mp4?url";
+import buildingVideoUrl from "../assets/building.mp4?url";
+import stormVideoUrl from "../assets/storm.mp4?url";
+import peaceVideoUrl from "../assets/peace.mp4?url";
+
+// A flat stand-in for the three.js scene: the same era rasters, the same pins,
+// the same action clips, playing on their own so the feature can be read at a
+// glance before anyone opens the real map.
+//
+// Pin coordinates are percentages of the sheet, placed by eye — these rasters
+// are illustrated charts rather than a true projection, so a lat/lng formula
+// would land events in the wrong place.
+interface PreviewStep {
+  year: string;
+  text: string;
+  x: number;
+  y: number;
+  action?: keyof typeof ACTION_VIDEOS;
+}
+
+const ACTION_VIDEOS = {
+  battle: battleVideoUrl,
+  building: buildingVideoUrl,
+  storm: stormVideoUrl,
+  peace: peaceVideoUrl,
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  battle: "Battle",
+  building: "Founding",
+  storm: "Storm",
+  peace: "Truce",
+};
+
+const chronicles: {
+  key: string;
+  label: string;
+  age: string;
+  href: string;
+  mapSrc: string;
+  steps: PreviewStep[];
+}[] = [
+  {
+    key: "rome",
+    label: "Rome",
+    age: "Ancient History",
+    href: "/rome",
+    mapSrc: ancientAgeMap.src,
+    steps: [
+      {
+        year: "753 BCE",
+        text: "Traditional founding of the city of Rome by Romulus",
+        x: 40,
+        y: 33,
+        action: "building",
+      },
+      {
+        year: "264 BCE",
+        text: "The First Punic War began between Rome and Carthage",
+        x: 38.5,
+        y: 40,
+        action: "battle",
+      },
+      {
+        year: "27 BCE",
+        text: "Augustus became Rome's first emperor, founding the Roman Empire",
+        x: 40,
+        y: 33.5,
+        action: "peace",
+      },
+      {
+        year: "395 CE",
+        text: "The Roman Empire split permanently into Western and Eastern halves",
+        x: 45.5,
+        y: 32,
+      },
+    ],
+  },
+  {
+    key: "conquest",
+    label: "Conquista",
+    age: "Early Modern Period",
+    href: "/conquest",
+    mapSrc: modernAgeMap.src,
+    steps: [
+      {
+        year: "1492",
+        text: "Columbus sailed from Palos de la Frontera with the Niña, the Pinta and the Santa María",
+        x: 35,
+        y: 37,
+      },
+      {
+        year: "1492",
+        text: "Landfall at Guanahaní, named San Salvador and claimed for Castile",
+        x: 19,
+        y: 45,
+      },
+      {
+        year: "1521",
+        text: "Tenochtitlan fell after a siege, ending the Mexica empire",
+        x: 12.5,
+        y: 49,
+        action: "battle",
+      },
+      {
+        year: "1533",
+        text: "Cuzco was taken and a colonial city raised over the Inca capital",
+        x: 21,
+        y: 64,
+        action: "building",
+      },
+    ],
+  },
+  {
+    key: "pirates",
+    label: "Pirates",
+    age: "Early Modern Period",
+    href: "/map",
+    mapSrc: modernAgeMap.src,
+    steps: [
+      {
+        year: "1502",
+        text: "Barbablanca arrived to Turtle Island",
+        x: 18.5,
+        y: 44.5,
+      },
+      {
+        year: "1508",
+        text: "Capitana Morgana raided the port of Nassau",
+        x: 20.5,
+        y: 43,
+        action: "battle",
+      },
+      {
+        year: "1571",
+        text: "A great storm sank three galleons off Shark Reef",
+        x: 17.5,
+        y: 47,
+        action: "storm",
+      },
+      {
+        year: "1556",
+        text: "Capitana Morgana signed a truce at Turtle Island",
+        x: 18.5,
+        y: 44.5,
+        action: "peace",
+      },
+    ],
+  },
+];
+---
+
+<div
+  id="map-preview"
+  data-chronicles={JSON.stringify(chronicles)}
+  data-action-videos={JSON.stringify(ACTION_VIDEOS)}
+  data-action-labels={JSON.stringify(ACTION_LABELS)}
+  class="mx-auto w-full max-w-5xl"
+>
+  {
+    /* Card and controls overlay the sheet from `sm` up, the way they sit on the
+	real map. On a phone there is no room for that, so they stack underneath and
+	the chart is left clear. */
+  }
+  <div class="relative">
+    {/* The sheet, framed like a chart pinned to a table. */}
+    <div
+      class="relative aspect-[16/9] w-full overflow-hidden rounded-xl border-2 border-brass/70 bg-ink shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)] ring-1 ring-black/40"
+    >
+      <img
+        id="preview-map"
+        src={chronicles[0].mapSrc}
+        alt=""
+        decoding="async"
+        class="absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
+      />
+
+      {
+        /* Route walked so far. The viewBox matches the 16:9 frame, so points are
+		simply the pin percentages scaled onto it. */
+      }
+      <svg
+        viewBox="0 0 160 90"
+        class="pointer-events-none absolute inset-0 h-full w-full"
+        aria-hidden="true"
+      >
+        <polyline
+          id="preview-route"
+          points=""
+          fill="none"
+          stroke="#c9a13b"
+          stroke-width="0.55"
+          stroke-linecap="round"
+          stroke-dasharray="2 2"
+          class="animate-march opacity-80 [filter:drop-shadow(0_0_1px_rgba(0,0,0,0.8))]"
+        ></polyline>
+      </svg>
+
+      <div id="preview-pins" class="absolute inset-0"></div>
+
+      {
+        /* Action clip for the active pin, mounted where the real scene mounts it. */
+      }
+      <div
+        id="preview-scene"
+        class="pointer-events-none absolute z-10 hidden -translate-x-1/2 -translate-y-[135%] transition-[top,left] duration-500"
+      >
+        <div
+          class="animate-float overflow-hidden rounded-full border-2 border-gold/80 bg-ink shadow-[0_10px_30px_rgba(0,0,0,0.7)] motion-reduce:animate-none"
+        >
+          <video
+            id="preview-video"
+            class="h-12 w-12 object-cover sm:h-20 sm:w-20 lg:h-24 lg:w-24"
+            muted
+            loop
+            playsinline
+            preload="none"></video>
+        </div>
+        <p
+          id="preview-action"
+          class="mt-1 text-center font-serif text-[11px] tracking-wide text-gold [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]"
+        >
+        </p>
+      </div>
+
+      <div
+        class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_35%,rgba(20,12,6,0.55)_80%,rgba(20,12,6,0.9)_100%)]"
+      >
+      </div>
+    </div>
+
+    {/* Caption card, the same one the scene raises over the map. */}
+    <div
+      id="preview-card"
+      class="pointer-events-none mx-auto mt-3 w-fit max-w-full rounded-lg border-2 border-brass bg-leather/90 px-5 py-2.5 text-center opacity-0 transition-opacity duration-500 sm:absolute sm:inset-x-4 sm:top-4 sm:mt-0 sm:max-w-[85%] [text-shadow:0_1px_2px_rgba(0,0,0,0.8)]"
+    >
+      <p
+        id="preview-year"
+        class="font-serif text-xl font-bold text-gold sm:text-2xl"
+      >
+      </p>
+      <p
+        id="preview-text"
+        class="font-serif text-sm text-parchment sm:text-base [text-wrap:balance]"
+      >
+      </p>
+    </div>
+
+    {/* Chronicle switcher and step bar, mirroring the controls on the map. */}
+    <div
+      class="mt-3 flex flex-col items-center gap-2 px-3 sm:absolute sm:inset-x-0 sm:bottom-3 sm:mt-0"
+    >
+      <div
+        id="preview-chronicles"
+        class="flex max-w-full gap-1.5 overflow-x-auto rounded-full border-2 border-brass bg-leather/85 px-2.5 py-1.5 [scrollbar-width:none]"
+      >
+      </div>
+      <div
+        id="preview-steps"
+        class="flex max-w-full gap-1.5 overflow-x-auto rounded-full border-2 border-brass bg-leather/85 px-2.5 py-1.5 [scrollbar-width:none]"
+      >
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm text-parchment/60"
+  >
+    <span
+      >A preview — the real chronicle is a 3D chart you can orbit and zoom.</span
+    >
+    <a
+      id="preview-open"
+      href="/rome"
+      class="font-bold text-gold underline decoration-brass underline-offset-4 transition-colors hover:text-parchment"
+    >
+      Open this chronicle →
+    </a>
+  </div>
+</div>
+
+<script>
+  interface PreviewStep {
+    year: string;
+    text: string;
+    x: number;
+    y: number;
+    action?: string;
+  }
+
+  interface PreviewChronicle {
+    key: string;
+    label: string;
+    age: string;
+    href: string;
+    mapSrc: string;
+    steps: PreviewStep[];
+  }
+
+  const root = document.getElementById("map-preview") as HTMLElement;
+  const chronicles: PreviewChronicle[] = JSON.parse(root.dataset.chronicles!);
+  const actionVideos: Record<string, string> = JSON.parse(
+    root.dataset.actionVideos!,
+  );
+  const actionLabels: Record<string, string> = JSON.parse(
+    root.dataset.actionLabels!,
+  );
+
+  const mapEl = document.getElementById("preview-map") as HTMLImageElement;
+  const routeEl = document.getElementById(
+    "preview-route",
+  ) as unknown as SVGPolylineElement;
+  const pinsEl = document.getElementById("preview-pins") as HTMLElement;
+  const sceneEl = document.getElementById("preview-scene") as HTMLElement;
+  const videoEl = document.getElementById("preview-video") as HTMLVideoElement;
+  const actionEl = document.getElementById("preview-action") as HTMLElement;
+  const cardEl = document.getElementById("preview-card") as HTMLElement;
+  const yearEl = document.getElementById("preview-year") as HTMLElement;
+  const textEl = document.getElementById("preview-text") as HTMLElement;
+  const chronicleBar = document.getElementById(
+    "preview-chronicles",
+  ) as HTMLElement;
+  const stepBar = document.getElementById("preview-steps") as HTMLElement;
+  const openLink = document.getElementById("preview-open") as HTMLAnchorElement;
+
+  const STEP_MS = 3200;
+  const reduceMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+
+  let chronicleIndex = 0;
+  let stepIndex = 0;
+  let timer = 0;
+  let onScreen = false;
+  let hovered = false;
+  let videosAllowed = false; // clips only load once the preview is in view
+
+  const chronicle = () => chronicles[chronicleIndex];
+
+  // State is toggled class by class rather than by rewriting className, so the
+  // element keeps its identity between steps and only the colours change.
+  const CHRONICLE_BASE =
+    "shrink-0 rounded-full px-3 py-1 font-serif text-xs font-bold whitespace-nowrap transition-colors sm:text-sm";
+  const STEP_BASE =
+    "shrink-0 rounded-full px-2.5 py-1 font-serif text-[11px] whitespace-nowrap transition-colors sm:text-xs";
+  const DOT_BASE =
+    "relative block h-3 w-3 rounded-full border-2 border-ink/70 transition-all duration-300";
+
+  function paintButton(button: Element, active: boolean) {
+    button.classList.toggle("bg-gold", active);
+    button.classList.toggle("text-leather", active);
+    button.classList.toggle("text-gold/70", !active);
+    button.classList.toggle("hover:text-gold", !active);
+  }
+
+  // Preload the other era raster so switching chronicles does not flash.
+  for (const entry of chronicles) new Image().src = entry.mapSrc;
+
+  function buildChronicleBar() {
+    chronicleBar.replaceChildren(
+      ...chronicles.map((entry, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = entry.label;
+        button.className = CHRONICLE_BASE;
+        button.addEventListener("click", () => {
+          select(index, 0);
+          restart();
+        });
+        return button;
+      }),
+    );
+  }
+
+  function buildStepBar() {
+    stepBar.replaceChildren(
+      ...chronicle().steps.map((step, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = step.year;
+        button.className = STEP_BASE;
+        button.addEventListener("click", () => {
+          select(chronicleIndex, index);
+          restart();
+        });
+        return button;
+      }),
+    );
+  }
+
+  function buildPins() {
+    pinsEl.replaceChildren(
+      ...chronicle().steps.map((step) => {
+        const pin = document.createElement("div");
+        pin.className =
+          "absolute -translate-x-1/2 -translate-y-full transition-opacity duration-500";
+        pin.style.left = `${step.x}%`;
+        pin.style.top = `${step.y}%`;
+
+        const dot = document.createElement("span");
+        dot.dataset.dot = "";
+        dot.className = DOT_BASE;
+
+        const ring = document.createElement("span");
+        ring.dataset.ring = "";
+        ring.className =
+          "pointer-events-none absolute left-1/2 top-1/2 hidden h-3 w-3 -translate-x-1/2 -translate-y-1/2 animate-ring rounded-full border-2 border-gold";
+
+        pin.append(dot, ring);
+        return pin;
+      }),
+    );
+  }
+
+  function paintChronicleBar() {
+    [...chronicleBar.children].forEach((child, index) =>
+      paintButton(child, index === chronicleIndex),
+    );
+  }
+
+  function paintStepBar() {
+    [...stepBar.children].forEach((child, index) =>
+      paintButton(child, index === stepIndex),
+    );
+  }
+
+  function paintPins() {
+    [...pinsEl.children].forEach((pin, index) => {
+      const dot = pin.querySelector("[data-dot]") as HTMLElement;
+      const ring = pin.querySelector("[data-ring]") as HTMLElement;
+      const active = index === stepIndex;
+
+      (pin as HTMLElement).style.opacity = index <= stepIndex ? "1" : "0";
+      dot.classList.toggle("bg-gold", active);
+      dot.classList.toggle("scale-150", active);
+      dot.classList.toggle("shadow-[0_0_12px_rgba(201,161,59,0.9)]", active);
+      dot.classList.toggle("bg-parchment/70", !active);
+      ring.classList.toggle("hidden", !active || reduceMotion);
+    });
+  }
+
+  function paintRoute() {
+    const walked = chronicle().steps.slice(0, stepIndex + 1);
+    routeEl.setAttribute(
+      "points",
+      walked
+        .map((step) => `${(step.x / 100) * 160},${(step.y / 100) * 90}`)
+        .join(" "),
+    );
+  }
+
+  // The clip sits above its pin, but events in the northern half of the sheet
+  // would push it under the caption card, so those hang it below instead.
+  const SCENE_BASE =
+    "pointer-events-none absolute z-10 -translate-x-1/2 transition-[top,left] duration-500";
+  const SCENE_ABOVE = "-translate-y-[135%]";
+  const SCENE_BELOW = "translate-y-[30%]";
+
+  function paintScene(step: PreviewStep) {
+    const src = step.action ? actionVideos[step.action] : undefined;
+    if (!src || !videosAllowed) {
+      sceneEl.classList.add("hidden");
+      videoEl.removeAttribute("src");
+      return;
+    }
+    sceneEl.className = `${SCENE_BASE} ${step.y < 45 ? SCENE_BELOW : SCENE_ABOVE}`;
+    sceneEl.style.left = `${step.x}%`;
+    sceneEl.style.top = `${step.y}%`;
+    actionEl.textContent = actionLabels[step.action!] ?? "";
+    if (videoEl.getAttribute("src") !== src) {
+      videoEl.setAttribute("src", src);
+      videoEl.load();
+    }
+    videoEl.play().catch(() => {});
+  }
+
+  function select(nextChronicle: number, nextStep: number) {
+    const chronicleChanged = nextChronicle !== chronicleIndex;
+    chronicleIndex = nextChronicle;
+    stepIndex = nextStep;
+
+    if (chronicleChanged) {
+      mapEl.src = chronicle().mapSrc;
+      openLink.href = chronicle().href;
+      buildStepBar();
+      buildPins();
+      paintChronicleBar();
+    }
+
+    const step = chronicle().steps[stepIndex];
+    cardEl.style.opacity = "0";
+    window.setTimeout(() => {
+      yearEl.textContent = step.year;
+      textEl.textContent = step.text;
+      cardEl.style.opacity = "1";
+    }, 180);
+
+    paintStepBar();
+    paintPins();
+    paintRoute();
+    paintScene(step);
+  }
+
+  function advance() {
+    const steps = chronicle().steps.length;
+    if (stepIndex + 1 < steps) return select(chronicleIndex, stepIndex + 1);
+    select((chronicleIndex + 1) % chronicles.length, 0);
+  }
+
+  function restart() {
+    window.clearInterval(timer);
+    if (reduceMotion || !onScreen || hovered) return;
+    timer = window.setInterval(advance, STEP_MS);
+  }
+
+  root.addEventListener("mouseenter", () => {
+    hovered = true;
+    restart();
+  });
+  root.addEventListener("mouseleave", () => {
+    hovered = false;
+    restart();
+  });
+
+  new IntersectionObserver(
+    (entries) => {
+      onScreen = entries[0].isIntersecting;
+      if (onScreen && !videosAllowed) {
+        videosAllowed = true;
+        paintScene(chronicle().steps[stepIndex]);
+      }
+      if (!onScreen) videoEl.pause();
+      restart();
+    },
+    { threshold: 0.1 },
+  ).observe(root);
+
+  buildChronicleBar();
+  buildStepBar();
+  buildPins();
+  paintChronicleBar();
+  select(0, 0);
+</script>
