@@ -15,7 +15,7 @@ const apiBase = (
   description="Send documents to the archive and follow the chronicles they become."
 >
   <header class="border-b border-brass/25 bg-ink/80 backdrop-blur">
-    <nav class="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
+    <nav class="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
       <a href="/" class="flex items-center gap-2 text-lg font-bold text-gold">
         <span class="text-xl">🧭</span>
         Chronicles
@@ -33,7 +33,7 @@ const apiBase = (
     </nav>
   </header>
 
-  <main id="library" data-api={apiBase} class="mx-auto max-w-5xl px-5 py-12">
+  <main id="library" data-api={apiBase} class="mx-auto max-w-6xl px-5 py-12">
     {/* Signed out: nothing to show until we know whose histories these are. */}
     <section
       id="library-locked"
@@ -73,54 +73,68 @@ const apiBase = (
           Welcome back, <span id="library-name" class="text-gold"></span>
         </h1>
         <p class="mx-auto mt-3 max-w-xl text-parchment/70">
-          Send a document and it joins the archive as a chronicle. Everything
-          you have sent is listed below, with what came out of it.
+          Send a document and it joins the archive as a chronicle. Pick one from
+          the shelf to see what came out of it.
         </p>
       </div>
 
-      <section class="mt-10">
-        <UploadPanel />
-      </section>
-
-      <section class="mt-16">
-        <div class="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 class="text-2xl font-bold text-gold">Your histories</h2>
-            <p id="library-count" class="mt-1 text-sm text-parchment/55"></p>
+      {
+        /* The shelf on the left, whatever you are doing with it on the right. */
+      }
+      <div
+        class="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start"
+      >
+        <section>
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 class="text-2xl font-bold text-gold">Your histories</h2>
+              <p id="library-count" class="mt-1 text-sm text-parchment/55"></p>
+            </div>
+            <button
+              id="library-refresh"
+              type="button"
+              class="rounded-full border-2 border-brass px-4 py-1.5 text-sm font-bold text-gold transition-colors hover:bg-leather disabled:opacity-50"
+            >
+              Refresh
+            </button>
           </div>
-          <button
-            id="library-refresh"
-            type="button"
-            class="rounded-full border-2 border-brass px-4 py-1.5 text-sm font-bold text-gold transition-colors hover:bg-leather disabled:opacity-50"
+
+          <p
+            id="library-error"
+            role="alert"
+            class="mt-4 hidden rounded-lg border border-red-400/40 bg-red-950/40 px-4 py-3 text-sm text-red-200"
           >
-            Refresh
-          </button>
-        </div>
-
-        <p
-          id="library-error"
-          role="alert"
-          class="mt-4 hidden rounded-lg border border-red-400/40 bg-red-950/40 px-4 py-3 text-sm text-red-200"
-        >
-        </p>
-
-        <p id="library-loading" class="mt-6 text-sm text-parchment/55">
-          Reading your archive…
-        </p>
-
-        <div
-          id="library-empty"
-          class="mt-6 hidden rounded-2xl border-2 border-dashed border-brass/50 px-6 py-12 text-center"
-        >
-          <p class="text-lg font-bold text-gold">Nothing filed yet</p>
-          <p class="mx-auto mt-2 max-w-sm text-sm text-parchment/60">
-            The first document you send appears here, with the events we read
-            out of it.
           </p>
-        </div>
 
-        <ul id="library-list" class="mt-6 space-y-4"></ul>
-      </section>
+          <p id="library-loading" class="mt-6 text-sm text-parchment/55">
+            Reading your archive…
+          </p>
+
+          <div
+            id="library-empty"
+            class="mt-6 hidden rounded-2xl border-2 border-dashed border-brass/50 px-6 py-12 text-center"
+          >
+            <p class="text-lg font-bold text-gold">Nothing filed yet</p>
+            <p class="mx-auto mt-2 max-w-sm text-sm text-parchment/60">
+              The first document you send appears here, with the events we read
+              out of it.
+            </p>
+          </div>
+
+          <ul id="library-list" class="mt-6 space-y-3"></ul>
+        </section>
+
+        {
+          /* Sends a document by default; steps aside for whichever history is
+        open, and comes back when it is closed. */
+        }
+        <aside id="library-side" class="lg:sticky lg:top-6">
+          <div id="library-upload">
+            <UploadPanel />
+          </div>
+          <div id="library-detail" class="hidden"></div>
+        </aside>
+      </div>
     </div>
   </main>
 </Layout>
@@ -134,6 +148,7 @@ const apiBase = (
   interface HistoryEntry {
     id: string;
     created_date: string;
+    title: string;
     status: "processing" | "ready" | "failed";
     error: string | null;
     events: TimelineEvent[];
@@ -155,6 +170,21 @@ const apiBase = (
   const refreshButton = document.getElementById(
     "library-refresh",
   ) as HTMLButtonElement;
+  const sideEl = document.getElementById("library-side") as HTMLElement;
+  const uploadEl = document.getElementById("library-upload") as HTMLElement;
+  const detailEl = document.getElementById("library-detail") as HTMLElement;
+
+  // What the shelf currently holds, and which of it is open on the right.
+  let entries: HistoryEntry[] = [];
+  let openId: string | null = null;
+
+  // Matches MAX_TITLE_LENGTH on the API, so the field stops at the same place
+  // the server would.
+  const MAX_TITLE_LENGTH = 120;
+
+  const CARD_BASE =
+    "w-full cursor-pointer rounded-2xl border-2 border-brass/50 bg-leather/40 p-4 text-left transition-colors hover:border-gold hover:bg-leather/70";
+  const CARD_ON = "border-gold bg-leather/80";
 
   // While anything is still being read, the list keeps checking back so the
   // badge turns over without a manual refresh.
@@ -182,9 +212,6 @@ const apiBase = (
       month: "long",
       day: "numeric",
     });
-
-  const fileName = (url: string) =>
-    decodeURIComponent((url ?? "").split("/").pop() ?? "") || "document";
 
   const absolute = (url: string) =>
     url?.startsWith("http") ? url : `${new URL(api).origin}${url ?? ""}`;
@@ -236,41 +263,218 @@ const apiBase = (
 
   function card(entry: HistoryEntry) {
     const item = document.createElement("li");
-    item.className =
-      "rounded-2xl border-2 border-brass/50 bg-leather/40 p-5 transition-colors hover:border-gold";
+
+    // The whole row is the control: picking one opens it on the right.
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.id = entry.id;
+    button.className = CARD_BASE;
+    button.setAttribute("aria-pressed", String(entry.id === openId));
 
     const head = document.createElement("div");
     head.className = "flex flex-wrap items-start justify-between gap-3";
     const title = document.createElement("h3");
-    title.className = "font-bold break-all text-gold";
-    title.textContent = fileName(entry.file_url);
+    title.className = "font-bold break-words text-gold";
+    // Stored files are renamed to a uuid, so the title is the only readable name.
+    title.textContent = entry.title || "Untitled history";
     head.append(title, badge(entry.status));
 
     const summary = line(
       summarize(entry),
       entry.status === "failed"
-        ? "mt-3 text-sm text-red-200/90"
-        : "mt-3 text-sm text-parchment/75",
+        ? "mt-2 text-sm text-red-200/90"
+        : "mt-2 text-sm text-parchment/70",
     );
 
-    // The first event doubles as a preview of what came out of the document.
-    const preview =
-      entry.status === "ready" && entry.events.length
-        ? line(
-            `“${entry.events[0].text}”`,
-            "mt-2 text-sm text-parchment/50 italic",
-          )
-        : null;
+    const foot = line(
+      `Sent ${formatDate(entry.created_date)}`,
+      "mt-3 text-xs text-parchment/45",
+    );
+
+    button.append(head, summary, foot);
+    button.addEventListener("click", () => openHistory(entry.id));
+    item.append(button);
+    return item;
+  }
+
+  // ── The panel on the right ───────────────────────────────────────────────
+
+  function openHistory(id: string | null) {
+    openId = id;
+    paintSelection();
+    renderDetail();
+    // Stacked on a phone, the panel sits under the shelf, so it has to be
+    // brought into view or the click looks like it did nothing.
+    if (id && window.matchMedia("(max-width: 1023px)").matches) {
+      sideEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function paintSelection() {
+    for (const button of listEl.querySelectorAll<HTMLElement>(
+      "button[data-id]",
+    )) {
+      const active = button.dataset.id === openId;
+      button.className = active ? `${CARD_BASE} ${CARD_ON}` : CARD_BASE;
+      button.setAttribute("aria-pressed", String(active));
+    }
+  }
+
+  function renderDetail() {
+    const entry = entries.find((item) => item.id === openId);
+    uploadEl.classList.toggle("hidden", Boolean(entry));
+    detailEl.classList.toggle("hidden", !entry);
+    if (!entry) {
+      detailEl.replaceChildren();
+      return;
+    }
+    detailEl.replaceChildren(detail(entry));
+  }
+
+  function detail(entry: HistoryEntry) {
+    const panel = document.createElement("div");
+    panel.className = "rounded-2xl border-2 border-brass/60 bg-leather/40 p-5";
+
+    const head = document.createElement("div");
+    head.className = "flex items-center justify-between gap-3";
+    const heading = document.createElement("p");
+    heading.className = "text-xs uppercase tracking-widest text-parchment/50";
+    heading.textContent = "This history";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.setAttribute("aria-label", "Close");
+    close.className =
+      "rounded-full px-2 text-xl leading-none text-parchment/50 transition-colors hover:text-gold";
+    close.textContent = "×";
+    close.addEventListener("click", () => openHistory(null));
+    head.append(heading, close);
+
+    // Title, and the field that changes it. Save wakes up once the text differs
+    // from what is stored, so the button says whether there is anything to do.
+    const form = document.createElement("form");
+    form.className = "mt-4";
+
+    const label = document.createElement("label");
+    label.className =
+      "block text-xs uppercase tracking-widest text-parchment/60";
+    label.textContent = "Title";
+    label.htmlFor = "detail-title";
+
+    const field = document.createElement("input");
+    field.id = "detail-title";
+    field.type = "text";
+    field.required = true;
+    field.value = entry.title;
+    field.maxLength = MAX_TITLE_LENGTH;
+    field.className =
+      "mt-1.5 w-full rounded-lg border-2 border-brass/60 bg-ink/60 px-3 py-2 text-sm text-parchment outline-none transition-colors focus:border-gold";
+
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.disabled = true;
+    save.className =
+      "mt-2 w-full rounded-full border-2 border-brass bg-gold px-4 py-2 text-sm font-bold text-leather transition-colors hover:bg-parchment disabled:cursor-not-allowed disabled:opacity-50";
+    save.textContent = "Save title";
+
+    const note = line("", "mt-2 hidden text-xs");
+    form.append(label, field, save, note);
+
+    const changed = () => field.value.trim() !== entry.title;
+    field.addEventListener("input", () => {
+      save.disabled = !changed();
+      note.classList.add("hidden");
+    });
+    field.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      field.value = entry.title;
+      save.disabled = true;
+      note.classList.add("hidden");
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const wanted = field.value.trim();
+      if (!wanted || !changed()) return;
+
+      save.disabled = true;
+      save.textContent = "Saving…";
+      try {
+        const updated = await rename(entry, wanted);
+        // The API answers with the whole document, so both sides are redrawn
+        // from what was stored rather than from what was typed.
+        entries = entries.map((item) =>
+          item.id === updated.id ? updated : item,
+        );
+        listEl.replaceChildren(...entries.map(card));
+        paintSelection();
+        renderDetail();
+      } catch (error) {
+        note.textContent = (error as Error).message;
+        note.className = "mt-2 text-xs text-red-300";
+        save.disabled = false;
+      } finally {
+        save.textContent = "Save title";
+      }
+    });
+
+    const facts = document.createElement("dl");
+    facts.className = "mt-5 space-y-2 border-t border-brass/25 pt-4 text-sm";
+    for (const [term, value] of [
+      ["State", BADGES[entry.status]?.label ?? entry.status],
+      ["Sent", formatDate(entry.created_date)],
+      ["Timeline", summarize(entry)],
+    ] as [string, string][]) {
+      const row = document.createElement("div");
+      row.className = "flex gap-3";
+      const key = document.createElement("dt");
+      key.className = "w-20 shrink-0 text-parchment/45";
+      key.textContent = term;
+      const val = document.createElement("dd");
+      val.className =
+        term === "Timeline" && entry.status === "failed"
+          ? "text-red-200/90"
+          : "text-parchment/80";
+      val.textContent = value;
+      row.append(key, val);
+      facts.append(row);
+    }
+
+    panel.append(head, form, facts);
+
+    // Everything the document turned into, in the order it happened.
+    if (entry.events.length) {
+      const events = document.createElement("ol");
+      events.className =
+        "mt-4 max-h-64 space-y-2 overflow-y-auto border-t border-brass/25 pt-4 text-sm [scrollbar-width:thin]";
+      for (const event of [...entry.events].sort((a, b) => a.year - b.year)) {
+        const row = document.createElement("li");
+        row.className = "flex gap-3";
+        const year = document.createElement("span");
+        year.className = "w-20 shrink-0 font-bold text-gold";
+        year.textContent = formatYear(event.year);
+        const text = document.createElement("span");
+        text.className = "text-parchment/75";
+        text.textContent = event.text;
+        row.append(year, text);
+        events.append(row);
+      }
+      panel.append(events);
+    }
+
+    // The whole point of sending a document: watching it play out on the map.
+    // Only offered once there is a timeline to walk.
+    if (entry.status === "ready" && entry.events.length) {
+      const watch = document.createElement("a");
+      watch.href = `/chronicle?id=${encodeURIComponent(entry.id)}`;
+      watch.className =
+        "mt-5 flex items-center justify-center gap-2 rounded-full border-2 border-brass bg-gold px-4 py-2.5 text-sm font-bold text-leather transition-colors hover:bg-parchment";
+      watch.textContent = "▶  See it on the map";
+      panel.append(watch);
+    }
 
     const foot = document.createElement("div");
     foot.className =
-      "mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-brass/25 pt-3 text-xs";
-    foot.append(
-      line(`Sent ${formatDate(entry.created_date)}`, "text-parchment/50"),
-    );
-
-    const actions = document.createElement("div");
-    actions.className = "flex items-center gap-4";
+      "mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-brass/25 pt-4 text-xs";
 
     if (entry.file_url) {
       const link = document.createElement("a");
@@ -279,7 +483,7 @@ const apiBase = (
       link.rel = "noreferrer";
       link.className = "font-bold text-gold hover:text-parchment";
       link.textContent = "View document →";
-      actions.append(link);
+      foot.append(link);
     }
 
     const remove = document.createElement("button");
@@ -287,13 +491,10 @@ const apiBase = (
     remove.className = "text-parchment/45 transition-colors hover:text-red-300";
     remove.textContent = "Delete";
     remove.addEventListener("click", () => destroy(entry, remove));
-    actions.append(remove);
+    foot.append(remove);
 
-    foot.append(actions);
-    item.append(head, summary);
-    if (preview) item.append(preview);
-    item.append(foot);
-    return item;
+    panel.append(foot);
+    return panel;
   }
 
   function showError(text: string) {
@@ -306,6 +507,67 @@ const apiBase = (
     dispatchEvent(
       new CustomEvent("chronicles:auth", { detail: { tab: "login" } }),
     );
+  }
+
+  async function rename(
+    entry: HistoryEntry,
+    title: string,
+  ): Promise<HistoryEntry> {
+    const current = session();
+    if (!current) {
+      expired();
+      throw new Error("Your session has expired. Sign in again to rename it.");
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${endpoint}/${entry.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${current.token}`,
+        },
+        body: JSON.stringify({ title }),
+      });
+    } catch {
+      throw new Error(
+        `Could not reach the chronicles service at ${new URL(api).origin}.`,
+      );
+    }
+
+    if (response.status === 401) {
+      expired();
+      throw new Error("Your session has expired. Sign in again to rename it.");
+    }
+    if (response.status === 404) {
+      throw new Error("This document is no longer in your archive.");
+    }
+    if (!response.ok) {
+      throw new Error(
+        detailOf(
+          await response.text(),
+          `That title was refused (${response.status}).`,
+        ),
+      );
+    }
+    return (await response.json()) as HistoryEntry;
+  }
+
+  // FastAPI reports a rejected title either as a plain string or, when the body
+  // itself fails validation, as a list of field errors.
+  function detailOf(text: string, fallback: string): string {
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed?.detail === "string") return parsed.detail;
+      if (Array.isArray(parsed?.detail) && parsed.detail.length) {
+        return parsed.detail
+          .map((item: any) => item?.msg ?? "Invalid value")
+          .join(". ");
+      }
+    } catch {
+      /* not json, keep the fallback */
+    }
+    return fallback;
   }
 
   async function destroy(entry: HistoryEntry, button: HTMLButtonElement) {
@@ -325,6 +587,7 @@ const apiBase = (
           `The archive refused to delete it (${response.status}).`,
         );
       }
+      if (openId === entry.id) openId = null;
       await load();
     } catch (error) {
       button.disabled = false;
@@ -352,13 +615,20 @@ const apiBase = (
         throw new Error(`Could not read your archive (${response.status}).`);
       }
 
-      const entries: HistoryEntry[] = await response.json();
+      const fetched: HistoryEntry[] = await response.json();
       // Newest first: the thing you just sent should be at the top.
-      entries.sort((a, b) => b.created_date.localeCompare(a.created_date));
+      fetched.sort((a, b) => b.created_date.localeCompare(a.created_date));
+      entries = fetched;
+
+      // Whatever was open stays open, unless it is gone from the shelf.
+      if (openId && !entries.some((entry) => entry.id === openId))
+        openId = null;
 
       loadingEl.classList.add("hidden");
       emptyEl.classList.toggle("hidden", entries.length > 0);
       listEl.replaceChildren(...entries.map(card));
+      paintSelection();
+      renderDetail();
       countEl.textContent = entries.length
         ? `${entries.length} document${entries.length === 1 ? "" : "s"} sent`
         : "";
@@ -386,7 +656,10 @@ const apiBase = (
     nameEl.textContent = current?.user.username ?? "";
     if (!current) {
       window.clearTimeout(timer);
+      entries = [];
+      openId = null;
       listEl.replaceChildren();
+      renderDetail();
     }
   }
 

@@ -1,0 +1,183 @@
+---
+import Layout from "../layouts/Layout.astro";
+import ThreeMapScene from "../features/three-map/components/ThreeMapScene.astro";
+
+// The map for one uploaded history, named by ?id=. The build cannot know those
+// ids, so the page ships empty and fetches the events with the reader's token.
+const apiBase = (
+  import.meta.env.PUBLIC_API_URL ?? "http://localhost:59800"
+).replace(/\/$/, "");
+---
+
+<Layout
+  title="A chronicle · Chronicles"
+  description="One of your documents, walked year by year across the map."
+>
+  <div id="chronicle-page" data-api={apiBase}>
+    <ThreeMapScene remote />
+
+    {
+      /* Sits over the sheet until the events are in, then gets out of the way. */
+    }
+    <div
+      id="chronicle-state"
+      class="fixed inset-0 z-30 flex items-center justify-center bg-ink/80 px-5 backdrop-blur-sm"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border-2 border-brass bg-leather/90 p-7 text-center"
+      >
+        <p id="chronicle-message" class="text-lg font-bold text-gold">
+          Opening this history…
+        </p>
+        <p id="chronicle-detail" class="mt-2 text-sm text-parchment/70"></p>
+        <div
+          id="chronicle-actions"
+          class="mt-5 flex flex-wrap items-center justify-center gap-3"
+        >
+          <a
+            href="/my-histories"
+            class="rounded-full border-2 border-brass px-5 py-2 text-sm font-bold text-gold transition-colors hover:bg-bark"
+          >
+            Back to your histories
+          </a>
+        </div>
+      </div>
+    </div>
+
+    {
+      /* Replaces the scene's own "Main page" link, which would lose the shelf. */
+    }
+    <a
+      href="/my-histories"
+      class="fixed left-4 top-4 z-20 rounded-full border-2 border-brass bg-leather/85 px-4 py-2 font-serif text-sm font-bold text-gold transition-colors hover:bg-bark"
+    >
+      ← Your histories
+    </a>
+
+    <p
+      id="chronicle-title"
+      class="pointer-events-none fixed inset-x-0 bottom-28 z-20 mx-auto w-fit max-w-[80%] px-4 text-center font-serif text-sm text-gold/80 [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]"
+    >
+    </p>
+  </div>
+</Layout>
+
+<script>
+  const page = document.getElementById("chronicle-page") as HTMLElement;
+  const api = page.dataset.api!;
+  const state = document.getElementById("chronicle-state") as HTMLElement;
+  const message = document.getElementById("chronicle-message") as HTMLElement;
+  const detail = document.getElementById("chronicle-detail") as HTMLElement;
+  const actions = document.getElementById("chronicle-actions") as HTMLElement;
+  const titleEl = document.getElementById("chronicle-title") as HTMLElement;
+
+  const id = new URLSearchParams(location.search).get("id");
+
+  function token(): string | null {
+    try {
+      const value = JSON.parse(
+        localStorage.getItem("chronicles.session") ?? "null",
+      );
+      if (!value?.token || value.expiresAt <= Date.now()) return null;
+      return value.token as string;
+    } catch {
+      return null;
+    }
+  }
+
+  function stop(headline: string, note: string) {
+    message.textContent = headline;
+    detail.textContent = note;
+    state.classList.remove("hidden");
+  }
+
+  function reveal() {
+    state.classList.add("hidden");
+  }
+
+  // The scene is a plain script on the page, so handing the chronicle over is a
+  // matter of announcing it once the events are in.
+  function show(label: string, events: unknown[]) {
+    dispatchEvent(
+      new CustomEvent("map:show-chronicle", { detail: { label, events } }),
+    );
+  }
+
+  async function load() {
+    if (!id) {
+      return stop(
+        "No history was named",
+        "Open one from your histories and it will be drawn here.",
+      );
+    }
+
+    const access = token();
+    if (!access) {
+      return stop(
+        "Sign in to open this history",
+        "Your histories are filed under your account.",
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${api}/historical-events/${id}`, {
+        headers: { Authorization: `Bearer ${access}` },
+      });
+    } catch {
+      return stop(
+        "Could not reach the chronicles service",
+        `Nothing answered at ${new URL(api).origin}. Start the backend and reload.`,
+      );
+    }
+
+    if (response.status === 401) {
+      return stop(
+        "Sign in to open this history",
+        "Your session has expired. Sign in again from your histories.",
+      );
+    }
+    if (response.status === 404) {
+      return stop(
+        "This history is not in your archive",
+        "It may have been deleted, or it belongs to somebody else.",
+      );
+    }
+    if (!response.ok) {
+      return stop(
+        "This history could not be opened",
+        `The archive answered with ${response.status}.`,
+      );
+    }
+
+    const entry = await response.json();
+    if (entry.status === "processing") {
+      return stop(
+        "Still being read",
+        "The events are still being pulled out of this document. Try again in a minute.",
+      );
+    }
+    if (entry.status === "failed") {
+      return stop(
+        "Nothing was read from this document",
+        entry.error ?? "It could not be turned into a timeline.",
+      );
+    }
+    if (!entry.events?.length) {
+      return stop(
+        "No events to draw",
+        "No dated places were found in this document, so there is nothing to put on the map.",
+      );
+    }
+
+    const title = entry.title || "Untitled history";
+    titleEl.textContent = title;
+    document.title = `${title} · Chronicles`;
+    show(title, entry.events);
+    reveal();
+  }
+
+  // The overlay's only button is the way back, so a failure never traps anyone.
+  actions.classList.remove("hidden");
+  load();
+</script>

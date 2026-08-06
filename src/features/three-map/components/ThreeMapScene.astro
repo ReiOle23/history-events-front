@@ -51,9 +51,12 @@ const CHRONICLES: { key: string; label: string; events: HistoryEvent[] }[] = [
 
 interface Props {
   chronicle?: string;
+  /** Start empty and wait for a `map:show-chronicle` event instead of shipping
+   * one of the bundled chronicles. */
+  remote?: boolean;
 }
 
-const { chronicle = "pirates" } = Astro.props;
+const { chronicle = "pirates", remote = false } = Astro.props;
 const initialIndex = Math.max(
   CHRONICLES.findIndex((entry) => entry.key === chronicle),
   0,
@@ -73,7 +76,9 @@ const project = (lng: number, lat: number) => ({
   z: -lat * UNITS_PER_DEGREE,
 });
 
-const chronicles = CHRONICLES.map((entry) => ({
+// In remote mode the sheet opens empty and the host page hands over the
+// chronicle once it has fetched it.
+const bundledChronicles = CHRONICLES.map((entry) => ({
   key: entry.key,
   label: entry.label,
   timeline: entry.events.map((event) => ({
@@ -87,8 +92,14 @@ const chronicles = CHRONICLES.map((entry) => ({
   })),
 }));
 
+const chronicles = remote
+  ? [{ key: "loaded", label: "Loading…", timeline: [] }]
+  : bundledChronicles;
+
 const initialEvents = CHRONICLES[initialIndex].events;
-const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
+const initialMapSrc = remote
+  ? modernAgeMap.src
+  : mapForAge(initialEvents[0]?.age ?? "");
 ---
 
 <div
@@ -97,7 +108,8 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   data-character-src={generalExample.src}
   data-action-videos={JSON.stringify(ACTION_VIDEOS)}
   data-chronicles={JSON.stringify(chronicles)}
-  data-initial-index={initialIndex}
+  data-age-maps={JSON.stringify(AGE_MAPS)}
+  data-initial-index={remote ? 0 : initialIndex}
   data-plane={JSON.stringify({
     width: PLANE_W,
     height: PLANE_H,
@@ -107,19 +119,26 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
 >
   <canvas id="three-canvas" class="block h-full w-full"></canvas>
 
-  {/* Lamplit vignette over the whole scene, the way the SVG map darkens toward
-  the edges of the sheet. */}
+  {
+    /* Lamplit vignette over the whole scene, the way the SVG map darkens toward
+  the edges of the sheet. */
+  }
   <div
     class="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_38%,rgba(28,17,9,0.45)_78%,rgba(20,12,6,0.8)_100%)]"
   >
   </div>
 
-  <a
-    href="/"
-    class="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-4 py-2 font-serif text-sm font-bold text-[#c9a13b] transition-colors hover:bg-[#4a2c14]"
-  >
-    ← Main page
-  </a>
+  {/* A host page in remote mode brings its own way back. */}
+  {
+    !remote && (
+      <a
+        href="/"
+        class="fixed left-4 top-4 z-20 flex items-center gap-2 rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-4 py-2 font-serif text-sm font-bold text-[#c9a13b] transition-colors hover:bg-[#4a2c14]"
+      >
+        ← Main page
+      </a>
+    )
+  }
 
   <div
     id="event-card"
@@ -136,14 +155,19 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     Drag to orbit · scroll to zoom
   </p>
 
-  {/* Chronicle switcher, then the step bar the tour walks through. Both are
-  filled in by the scene script so a chronicle change rebuilds them. */}
+  {
+    /* Chronicle switcher, then the step bar the tour walks through. Both are
+  filled in by the scene script so a chronicle change rebuilds them. */
+  }
   <div
     class="pointer-events-none fixed inset-x-0 bottom-6 z-20 flex flex-col items-center gap-2 px-4"
   >
     <div
       id="chronicle-bar"
-      class="pointer-events-auto flex max-w-full gap-2 overflow-x-auto rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-3 py-2 [scrollbar-width:thin]"
+      class:list={[
+        "pointer-events-auto flex max-w-full gap-2 overflow-x-auto rounded-full border-2 border-[#9c7a24] bg-[#2a1608]/85 px-3 py-2 [scrollbar-width:thin]",
+        remote && "hidden",
+      ]}
     >
     </div>
     <div
@@ -287,7 +311,11 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
 
   // Marks are stamped nine times, once per neighbouring tile, so anything
   // crossing an edge continues on the far side and the tiling stays seamless.
-  const stampTiled = (x: number, y: number, paint: (x: number, y: number) => void) => {
+  const stampTiled = (
+    x: number,
+    y: number,
+    paint: (x: number, y: number) => void,
+  ) => {
     for (let ox = -1; ox <= 1; ox++) {
       for (let oy = -1; oy <= 1; oy++) paint(x + ox * TILE, y + oy * TILE);
     }
@@ -353,7 +381,10 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
       stampTiled(x, y, (sx, sy) => {
         ctx.beginPath();
         ctx.moveTo(sx, sy);
-        ctx.lineTo(sx + Math.cos(angle) * length, sy + Math.sin(angle) * length);
+        ctx.lineTo(
+          sx + Math.cos(angle) * length,
+          sy + Math.sin(angle) * length,
+        );
         ctx.stroke();
       });
     }
@@ -605,7 +636,8 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   landMesh.renderOrder = 2;
   scene.add(landMesh);
 
-  const landColors = landMesh.geometry.attributes.color as THREE.BufferAttribute;
+  const landColors = landMesh.geometry.attributes
+    .color as THREE.BufferAttribute;
   const paletteColor = new THREE.Color();
 
   function paintCountries(palette: string[]) {
@@ -892,9 +924,12 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     material.color.set("#ffffff");
     material.needsUpdate = true;
     actionPanel.visible = true;
-    void videoElements.get(action)?.play().catch(() => {
-      // Autoplay refused: the frame stays on whatever the video last decoded.
-    });
+    void videoElements
+      .get(action)
+      ?.play()
+      .catch(() => {
+        // Autoplay refused: the frame stays on whatever the video last decoded.
+      });
   }
 
   // Name plate, drawn to a canvas because three has no text of its own. One
@@ -1066,6 +1101,10 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
   // start the new one from its first event.
   function selectChronicle(index: number) {
     if (index === chronicleIndex) return;
+    startChronicle(index);
+  }
+
+  function startChronicle(index: number) {
     chronicleIndex = index;
     timeline = chronicles[index].timeline;
 
@@ -1082,7 +1121,10 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
 
     camera.position.copy(OVERVIEW_POSITION);
     controls.target.copy(OVERVIEW_TARGET);
-    startTimeout = setTimeout(() => showEvent(0, { chain: true }), START_DELAY_MS);
+    startTimeout = setTimeout(
+      () => showEvent(0, { chain: true }),
+      START_DELAY_MS,
+    );
   }
 
   function showEvent(index: number, { chain = false } = {}) {
@@ -1164,6 +1206,36 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     selectEvent((event as CustomEvent<{ index: number }>).detail.index);
   });
 
+  // A chronicle handed over at runtime — one read out of an uploaded document,
+  // rather than one bundled with the page. The events arrive in the shape the
+  // API returns them, so the projection the frontmatter does for bundled
+  // chronicles is repeated here.
+  const ageMaps: Record<string, string> = JSON.parse(
+    root.dataset.ageMaps ?? "{}",
+  );
+
+  window.addEventListener("map:show-chronicle", (event) => {
+    const { label, events } = (
+      event as CustomEvent<{ label: string; events: any[] }>
+    ).detail;
+
+    chronicles.splice(0, chronicles.length, {
+      key: "loaded",
+      label,
+      timeline: events.map((entry) => ({
+        year: entry.year,
+        text: entry.text,
+        characters: entry.characters ?? [],
+        age: entry.age,
+        action: entry.action ?? "",
+        mapSrc: ageMaps[entry.age] ?? initialMapSrc,
+        x: entry.lng * UNITS_PER_DEGREE,
+        z: -entry.lat * UNITS_PER_DEGREE,
+      })),
+    });
+    startChronicle(0);
+  });
+
   renderChronicleBar();
   renderEventBar();
   startTimeout = setTimeout(
@@ -1187,7 +1259,11 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
     if (flight) {
       const t = Math.min((now - flight.startedAt) / TRAVEL_MS, 1);
       const eased = easeInOutCubic(t);
-      camera.position.lerpVectors(flight.fromPosition, flight.toPosition, eased);
+      camera.position.lerpVectors(
+        flight.fromPosition,
+        flight.toPosition,
+        eased,
+      );
       controls.target.lerpVectors(flight.fromTarget, flight.toTarget, eased);
       if (t >= 1) {
         const { onArrive } = flight;
@@ -1218,7 +1294,8 @@ const initialMapSrc = mapForAge(initialEvents[0]?.age ?? "");
 
       const pulse = (now % 1600) / 1600;
       pulseRing.scale.setScalar(1 + pulse * 1.6);
-      (pulseRing.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - pulse);
+      (pulseRing.material as THREE.MeshBasicMaterial).opacity =
+        0.7 * (1 - pulse);
     }
 
     controls.update();
